@@ -1,37 +1,37 @@
 # Promiscuous Kamihime
 
-A userscript for Kamihime Project that enhances gameplay and extends functionality.
-
-Features
-Support multiple platforms including DMM, Johren, Nutaku, Ero-labs, and bana-bana
-Runs automatically on supported pages  
-Improves in-game behavior and user experience  
+Userscript for Kamihime Project.  
+Extends game behavior and improves usability on supported platforms.
 
 Supported Sites
-DMM
-Fanza
+DMM Games  
 Johren  
 Nutaku  
 Ero-labs  
 bana-bana
 
 Installation
-Install a userscript manager such as Tampermonkey
+Install Tampermonkey
 Create a new script  
-Paste the content of PromiscuousKamihime.js  
+Paste PromiscuousKamihime.js  
 Save and open the game page  
 
 Usage
-The script runs automatically on supported pages  
-No manual setup required  
+Runs automatically on supported pages  
+No configuration required  
 
 Files
-PromiscuousKamihime.js main script file  
+PromiscuousKamihime.js main script  
 
-Disclaimer
-This is an unofficial tool  
-Use at your own risk  
-Game updates may break the script  
+Notes
+Unofficial tool use at your own risk  
+Game updates may break functionality  
 
 Author
 Kaneshiro Takeshi  
+
+License
+Follow original license terms  
+
+Misc
+I am not a JavaScript developer, so my coding style and naming may feel unusual or even uncomfortable to experienced JavaScript developers. Please understand. This is only my second JavaScript project. The first one was for simple effects on a personal website. There may not be a next version.
