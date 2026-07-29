@@ -16,7 +16,9 @@ Improves in game interaction and overall flow
 
 Supported Sites
 
-DMM Games
+DMM
+
+Fanza
 
 Johren
 
