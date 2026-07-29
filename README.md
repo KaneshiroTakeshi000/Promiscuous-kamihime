@@ -2,15 +2,17 @@
 
 Userscript for Kamihime Project.
 
-Extends game behavior and improves usability on supported platforms.
+Extends game behavior and improves usability across supported platforms.
+
+![Screenshot](readme.jpg)
 
 Features
 
-Multi platform support DMM Johren Nutaku Ero labs bana-bana
+Multi platform support for DMM Johren Nutaku EroLabs and bana-bana
 
-Auto executes on matched pages
+Automatically runs on matched pages
 
-Enhances in game interactions and flow
+Improves in game interaction and overall flow
 
 Supported Sites
 
@@ -20,7 +22,7 @@ Johren
 
 Nutaku
 
-Ero labs
+EroLabs
 
 bana-bana
 
@@ -30,7 +32,7 @@ Install Tampermonkey
 
 Create a new script
 
-Paste PromiscuousKamihime.js
+Paste the contents of PromiscuousKamihime.js
 
 Save and open the game page
 
@@ -46,7 +48,7 @@ PromiscuousKamihime.js main script
 
 Notes
 
-Unofficial tool use at your own risk
+This is an unofficial tool use at your own risk
 
 Game updates may break functionality
 
@@ -56,7 +58,7 @@ Kaneshiro Takeshi
 
 Misc
 
-I am not a JavaScript developer so my coding style and naming may feel unusual or even uncomfortable to experienced JavaScript developers. Please understand.
+I am not a JavaScript developer, so my coding style and naming conventions may feel unusual or even uncomfortable to experienced JavaScript developers. Please understand.
 
 This is only my second JavaScript project. The first one was for simple effects on a personal website.
 
