@@ -54,10 +54,6 @@ Author
 
 Kaneshiro Takeshi
 
-License
-
-Follow original license terms
-
 Misc
 
 I am not a JavaScript developer so my coding style and naming may feel unusual or even uncomfortable to experienced JavaScript developers. Please understand.
