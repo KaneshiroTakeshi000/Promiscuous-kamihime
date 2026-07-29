@@ -16,7 +16,7 @@ Ero-labs
 bana-bana
 
 Installation
-Install a userscript manager such as Tampermonkey or Violentmonkey  
+Install a userscript manager such as Tampermonkey
 Create a new script  
 Paste the content of PromiscuousKamihime.js  
 Save and open the game page  
