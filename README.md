@@ -3,7 +3,7 @@
 A userscript for Kamihime Project that enhances gameplay and extends functionality.
 
 Features
-Support multiple platforms including DMM, Johren, Nutaku, and Ero-labs  
+Support multiple platforms including DMM, Johren, Nutaku, Ero-labs, and bana-bana
 Runs automatically on supported pages  
 Improves in-game behavior and user experience  
 
