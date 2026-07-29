@@ -8,11 +8,12 @@ Runs automatically on supported pages
 Improves in-game behavior and user experience  
 
 Supported Sites
-DMM Games  
+DMM
+Fanza
 Johren  
 Nutaku  
 Ero-labs  
-CloudFront and API endpoints  
+bana-bana
 
 Installation
 Install a userscript manager such as Tampermonkey or Violentmonkey  
