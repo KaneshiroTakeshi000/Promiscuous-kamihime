@@ -167,7 +167,7 @@ function onPortal() {
 				} else if (attempts >= maxAttempts) {
 					clearInterval(scrollInterval);//Timeout
 				}
-			}, 500);
+			}, 1000);
 		} catch (error) {
 			console.log(error);
 		}
@@ -756,7 +756,8 @@ function onGameFrame() {
 				{value: "public", text: "PUBLIC RAID"},
 				{value: "rescue", text: "RESCUE ID"},
 				{value: "myRaid", text: "MY RAID"},
-				{value: "union", text: "UNION"}
+				{value: "union", text: "UNION"},
+				{value: "freeMan", text: "FREE MAN"}
 			];
 			//Autonomous Robot
 			const autonomousRobotLabel = document.createElement("label");
@@ -1115,6 +1116,54 @@ function onGameFrame() {
 			};
 			dailyLevelMaxLabel.appendChild(dailyLevelMaxInput);
 			robotDailyArea.appendChild(dailyLevelMaxLabel);
+			//飾品關
+			const accessoryOptions = [
+				{value: 82, text: "火(10)"},{value: 72, text: "火(9)"},{value: 62, text: "火(8)"},
+				{value: 52, text: "火(7)"},{value: 42, text: "火(6)"},{value: 30, text: "火(5)"},
+				{value: 8, text: "火(4)"},{value: 7, text: "火(3)"},{value: 6, text: "火(2)"},
+				{value: 5, text: "火(1)"},
+				{value: 83, text: "水(10)"},{value: 73, text: "水(9)"},{value: 63, text: "水(8)"},
+				{value: 53, text: "水(7)"},{value: 43, text: "水(6)"},{value: 31, text: "水(5)"},
+				{value: 12, text: "水(4)"},{value: 11, text: "水(3)"},{value: 10, text: "水(2)"},
+				{value: 9, text: "水(1)"},
+				{value: 84, text: "風(10)"},{value: 74, text: "風(9)"},{value: 64, text: "風(8)"},
+				{value: 54, text: "風(7)"},{value: 44, text: "風(6)"},{value: 32, text: "風(5)"},
+				{value: 16, text: "風(4)"},{value: 15, text: "風(3)"},{value: 14, text: "風(2)"},
+				{value: 13, text: "風(1)"},
+				{value: 81, text: "雷(10)"},{value: 71, text: "雷(9)"},{value: 61, text: "雷(8)"},
+				{value: 51, text: "雷(7)"},{value: 41, text: "雷(6)"},{value: 29, text: "雷(5)"},
+				{value: 4, text: "雷(4)"},{value: 3, text: "雷(3)"},{value: 2, text: "雷(2)"},
+				{value: 1, text: "雷(1)"},
+				{value: 85, text: "光(10)"},{value: 75, text: "光(9)"},{value: 65, text: "光(8)"},
+				{value: 55, text: "光(7)"},{value: 45, text: "光(6)"},{value: 33, text: "光(5)"},
+				{value: 20, text: "光(4)"},{value: 19, text: "光(3)"},{value: 18, text: "光(2)"},
+				{value: 17, text: "光(1)"},
+				{value: 86, text: "闇(10)"},{value: 76, text: "闇(9)"},{value: 66, text: "闇(8)"},
+				{value: 56, text: "闇(7)"},{value: 46, text: "闇(6)"},{value: 34, text: "闇(5)"},
+				{value: 24, text: "闇(4)"},{value: 23, text: "闇(3)"},{value: 22, text: "闇(2)"},
+				{value: 21, text: "闇(1)"},
+				{value: 87, text: "全(10)"},{value: 77, text: "全(9)"},{value: 67, text: "全(8)"},
+				{value: 57, text: "全(7)"},{value: 47, text: "全(6)"},{value: 35, text: "全(5)"},
+				{value: 28, text: "全(4)"},{value: 27, text: "全(3)"},{value: 26, text: "全(2)"},
+				{value: 25, text: "全(1)"}
+			];
+			const dailyAccessoryLabel = document.createElement("label");
+			dailyAccessoryLabel.setAttribute("style", rowStyle);
+			dailyAccessoryLabel.appendChild(document.createTextNode("飾品關卡"));
+			const dailyAccessorySelect = document.createElement("select");
+			dailyAccessorySelect.setAttribute("style", selectStyle);
+			applySelectHoverEffect(dailyAccessorySelect);
+			const dailyAccessory = Number(GM_getValue("dailyAccessory", 87));
+			accessoryOptions.forEach(function(optData) {
+				const opt = document.createElement("option");
+				opt.value = optData.value;
+				opt.text = optData.text;
+				if (optData.value === dailyAccessory) opt.selected = true;
+				dailyAccessorySelect.appendChild(opt);
+			});
+			dailyAccessoryLabel.appendChild(dailyAccessorySelect);
+			dailyAccessorySelect.onchange = function() {GM_setValue("dailyAccessory", Number(this.value));};
+			robotDailyArea.appendChild(dailyAccessoryLabel);
 			robotPanel.appendChild(robotDailyArea);
 
 			const robotPublicArea = document.createElement("div");
@@ -1162,7 +1211,7 @@ function onGameFrame() {
 			pubLvlInput.type = "number";
 			pubLvlInput.setAttribute("style", selectStyle);
 			pubLvlInput.style.padding = "2px 0px";
-			pubLvlInput.value = GM_getValue("publicRaidEnemyLevel", 110);
+			pubLvlInput.value = GM_getValue("publicRaidEnemyLevel", 109);
 			applySelectHoverEffect(pubLvlInput);
 			pubLvlInput.onchange = function() {
 				let val = parseInt(this.value, 10);
@@ -1206,7 +1255,7 @@ function onGameFrame() {
 			myMinInput.type = "number";
 			myMinInput.setAttribute("style", selectStyle);
 			myMinInput.style.padding = "2px 0px";
-			myMinInput.value = GM_getValue("myRaidQuestLevelMin", 110);
+			myMinInput.value = GM_getValue("myRaidQuestLevelMin", 109);
 			applySelectHoverEffect(myMinInput);
 			myMinInput.onchange = function() {
 				let val = parseInt(this.value, 10);
@@ -1223,7 +1272,7 @@ function onGameFrame() {
 			myMaxInput.type = "number";
 			myMaxInput.setAttribute("style", selectStyle);
 			myMaxInput.style.padding = "2px 0px";
-			myMaxInput.value = GM_getValue("myRaidQuestLevelMax", 159);
+			myMaxInput.value = GM_getValue("myRaidQuestLevelMax", 160);
 			applySelectHoverEffect(myMaxInput);
 			myMaxInput.onchange = function() {
 				let val = parseInt(this.value, 10);
@@ -1640,23 +1689,23 @@ function onGameApp() {
 
 	//daily robot資料區
 	const _dailyQuests = [];//待處理的每日戰鬥關卡
-	let _dailyQuestLevelMax = GM_getValue("dailyQuestLevelMax", 110);//每日Raid關卡等級上限,大於此等級不執行
+	let _dailyQuestLevelMax = GM_getValue("dailyQuestLevelMax", 111);//每日Raid關卡等級上限,大於此等級不執行
 	let _dailyElementQuestId = 37;//每日屬性任務的執行關卡
 	let _dailyMaterialQuestId = 35;//每日素材任務的執行關卡
-	let _dailyAccessoryQuestId = 87;//每日飾品任務的執行關卡
+	let _dailyAccessoryQuestId = GM_getValue("dailyAccessory", 87);//每日飾品任務的執行關卡
 
 	//public raid robot資料區
 	let _robotPublicRaidTimerId = null;//避免重復執行
 	let _publicRaidEnemyHp = GM_getValue("publicRaidEnemyHp", 30.0);//必須高於此血量(%)
 	let _publicRaidParticipants = GM_getValue("publicRaidParticipants", 8);//必須小於此人數
-	let _publicRaidEnemyLevel = GM_getValue("publicRaidEnemyLevel", 110);//必須大於此等級
+	let _publicRaidEnemyLevel = GM_getValue("publicRaidEnemyLevel", 109);//必須大於此等級
 
 	//rescue raid robot 與 my raid robot 資料區
 	let _robotRescueRaidTimerId = null;//避免重復執行
 	let _lastRescueId = "";//上一次取得的救援ID
 	let _rescueInterval = GM_getValue("rescueInterval", 3000);//救援碼詢問間隔時間(ms)
-	let _myRaidQuestLevelMin = GM_getValue("myRaidQuestLevelMin", 110);//Raid關卡等級下限,小於此等級不執行
-	let _myRaidQuestLevelMax = GM_getValue("myRaidQuestLevelMax", 159);//Raid關卡等級上限,大於此等級不執行
+	let _myRaidQuestLevelMin = GM_getValue("myRaidQuestLevelMin", 109);//Raid關卡等級下限,小於此等級不執行
+	let _myRaidQuestLevelMax = GM_getValue("myRaidQuestLevelMax", 160);//Raid關卡等級上限,大於此等級不執行
 
 	//union Robot資料區
 	let _unionTimerId = null;//避免重復執行
@@ -1679,10 +1728,15 @@ function onGameApp() {
 	let _originalCharacterSpeed = null;
 	let _originalEnemySpeed = null;
 	/** 
-	 * @description 延時輔助函式 
+	 * @description 延遲
 	 * @param {number} ms - 毫秒
 	 */
 	const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+	/** 
+	 * @description 隨機延遲
+	 * @param {number} ms - 毫秒
+	 */
+	const sleepRandom = (baseMs, jitterMs = 100) => sleep(baseMs + Math.floor(Math.random() * jitterMs));
 
 	init();//程式進入點
 
@@ -1855,6 +1909,9 @@ function onGameApp() {
 		});
 		GM_addValueChangeListener("dailyQuestLevelMax", function(key, oldValue, newValue, remote) {
 			 _dailyQuestLevelMax = newValue;//每日Raid關卡等級上限
+		});
+		GM_addValueChangeListener("dailyAccessory", function(key, oldValue, newValue, remote) {
+			_dailyAccessoryQuestId = newValue;//每日飾品任務的執行關卡
 		});
 		GM_addValueChangeListener("rescueInterval", function(key, oldValue, newValue, remote) {
 			 _rescueInterval = newValue;//救援碼詢問間隔時間
@@ -2647,7 +2704,35 @@ function onGameApp() {
 			//查詢關卡資料
 			//fetchElementQuest();
 			//fetchMaterialQuest();
-			fetchAccessoryQuest();
+			//fetchAccessoryQuest();
+
+			// const apiAQuestInfo = kh.createInstance("apiAQuestInfo");
+			// if (apiAQuestInfo) {
+			// 	inspectObject(apiAQuestInfo, "apiAQuestInfo");
+			// } else {
+			// 	debugLog("no apiAQuestInfo");
+			// }
+
+			// const apiAAreas = kh.createInstance("apiAAreas");
+			// if (apiAAreas) {
+			// 	inspectObject(apiAAreas, "apiAAreas");
+			// } else {
+			// 	debugLog("no apiAAreas");
+			// }
+
+			// if (!_httpClient) { debugLog("HTTP connection not initialized"); return defaultData; }
+			// //發送請求取得該關卡的詳細資料
+			// const areaId = Math.ceil(64 / 5);
+			// const detailRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_worlds/current`});
+			// const responseData = detailRes.body;
+			// const isAreaExist = responseData.a_areas.some((area) => {return area.area_id === areaId;});
+			// if (isAreaExist) {
+			// 	const apiAQuestInfo = kh.createInstance("apiAQuestInfo");
+			// 	await apiAQuestInfo.moveArea(areaId);
+			// } else {
+			// 	debugLog("no areaId" + areaId);
+			// }
+			//debugLog(JSON.stringify(detailRes.body, null, 2));
 
 			//exportAllWeaponData();
 			//debugLog(JSON.stringify(res.body, null, 2));
@@ -2934,6 +3019,8 @@ function onGameApp() {
 						case "onQuestResult"://戰鬥結算
 							result = await robotDailyQuestResult();
 							break;
+						case "onQuestResultTimeout"://戰鬥結算逾時
+							break;
 					}
 					break;	
 				case "public":
@@ -2952,6 +3039,8 @@ function onGameApp() {
 							break;
 						case "onQuestResult"://戰鬥結算
 							if (!_robotPublicRaidTimerId) _robotPublicRaidTimerId = setTimeout(robotPublicRaidTimer, 0);
+							break;
+						case "onQuestResultTimeout"://戰鬥結算逾時
 							break;
 					}
 					break;
@@ -2972,6 +3061,8 @@ function onGameApp() {
 						case "onQuestResult"://戰鬥結算
 							if (!_robotRescueRaidTimerId) _robotRescueRaidTimerId = setTimeout(robotRescueRaidTimer, 0);
 							break;
+						case "onQuestResultTimeout"://戰鬥結算逾時
+							break;
 					}
 					break;
 				case "myRaid":
@@ -2991,6 +3082,8 @@ function onGameApp() {
 							break;
 						case "onQuestResult"://戰鬥結算
 							result = await robotMyRaidStart();
+							break;
+						case "onQuestResultTimeout"://戰鬥結算逾時
 							break;
 					}
 					break;
@@ -3013,6 +3106,30 @@ function onGameApp() {
 							//if (!_unionTimerId) _unionTimerId = setTimeout(botUnionTimer, 0);
 							result = await robotUnionTrigger();
 							break;
+						case "onQuestResultTimeout"://戰鬥結算逾時
+							break;
+					}
+					break;
+				case "freeMan":
+					switch (stepName) {
+						case "submitOrder"://用戶提交任務需求
+							result = await robotFreeManStart();
+							break;
+						case "BattleRescue"://自發取得救援碼
+							//result = await robotFreeManRescue();
+							break;
+						case "died"://戰鬥中陣亡
+							//result = await robotFreeManTrigger();
+							break;
+						case "onBattleEnd"://戰鬥結束
+							//result = await robotFreeManBattleEnd();
+							break;
+						case "onQuestResult"://戰鬥結算
+							result = await robotFreeManTrigger();
+							break;
+						case "onQuestResultTimeout"://戰鬥結算逾時
+							result = await robotFreeManTrigger();
+							break;
 					}
 					break;
 			}
@@ -3021,6 +3138,70 @@ function onGameApp() {
 			result = false;
 		}
 		return result;
+	}
+	/**
+	 * @description 64-2幻獸點關卡 或是 救援Raid
+	 */
+	async function robotFreeManStart() {
+		try {
+			//戰鬥中不作用
+			if (_currentSceneName === "battle") return;
+			robotFreeManTrigger();
+		} catch (error) {
+			debugLog("robotFreeManStart: " + error);
+		}
+	}
+	/**
+	 * @description 測試多種任務轉換, 64-2幻獸點關卡 或是 救援Raid
+	 * @returns {boolean} 放行程式繼續執行回傳true,否則回傳false
+	 */
+	async function robotFreeManTrigger() {
+		try {
+			// const rescueId = await fetchStringFromFirebase();
+			// if (rescueId) {
+			// 	const pureRescueId = rescueId.slice(0, 9);
+			// 	await refillApBpIfNeeded();
+			// 	await settleUnverifiedBattles();
+			// 	if (await joinRescueRaid(pureRescueId)) {
+			// 		await sleep(1000);
+			// 		return false;
+			// 	} else {
+			// 		debugLog("join fail, give up");
+			// 		return true;
+			// 	}
+			// } else {
+			//主線關卡章節
+			const questType = "main";const mainQuestID = 64;const episodeNum = 2;
+			//取得關卡之前的資訊
+			const main642PrevInfo = await getQuestPrevious(mainQuestID, questType, episodeNum);
+			const prevPartyId = main642PrevInfo.prevPartyId;
+			const prevSummonElement = main642PrevInfo.prevSummonElement;
+			//取得支援幻獸
+			const supportSummonId = await getSupportSummonId(prevSummonElement);
+			//產生入場資訊
+			const currentQuest = {
+				url: `${kh.env.urlRoot}/a_quests/${mainQuestID}/start`,
+				json: {
+					type: questType,
+					a_party_id: prevPartyId,
+					support_a_summon_id: supportSummonId,
+					support_summon_tab_element_type: prevSummonElement,
+					episode_num: episodeNum
+				}
+			}
+			//進入幻獸點關卡
+			if (await launchRaidBattle(currentQuest)) {
+				await sleep(1000);
+				return false;
+			} else {
+				debugLog("launch fail, give up");
+				return true;
+			}
+			//}
+		} catch (error) {
+			debugLog("robotFreeManTrigger: " + error);
+		}
+		return true;
 	}
 	/**
 	 * @description 每日要執行的動作集合
@@ -3151,7 +3332,7 @@ function onGameApp() {
 					for (const item of group.data) {
 						const enemyLevel = item.raid_info?.enemy_level;
 						if (!enemyLevel || enemyLevel <= 0) continue;//已不使用的關卡
-						if (enemyLevel > _dailyQuestLevelMax) continue;//太高不單吃
+						if (enemyLevel >= _dailyQuestLevelMax) continue;//太高不單吃
 						if (item.is_new) continue;//未開通的關卡
 						const challengeCount = item.limit_info?.remaining_challenge_count;
 						if (!challengeCount || challengeCount < 1) continue;//已完成的關卡
@@ -3364,7 +3545,7 @@ function onGameApp() {
 		return true;
 	}
 	/**
-	 * @description 煉獄蘿蔔，選擇館卡後執行戰鬥
+	 * @description 煉獄蘿蔔，選擇關卡後執行戰鬥
 	 * @returns {boolean} 放行程式繼續執行回傳true,否則回傳false
 	 */
 	async function robotUnionTrigger() {
@@ -3468,8 +3649,8 @@ function onGameApp() {
 				for (const item of group.data) {
 					const enemyLevel = item.raid_info?.enemy_level;
 					if (!enemyLevel || enemyLevel <= 0) continue;//已不使用的關卡
-					if (enemyLevel < _myRaidQuestLevelMin) continue;//太低不吃
-					if (enemyLevel > _myRaidQuestLevelMax) continue;//太高不吃
+					if (enemyLevel <= _myRaidQuestLevelMin) continue;//太低不吃
+					if (enemyLevel >= _myRaidQuestLevelMax) continue;//太高不吃
 					if (item.is_new) continue;//未開通的關卡
 					const challengeCount = item.limit_info?.remaining_challenge_count;
 					if (!challengeCount || challengeCount < 1) continue;//已完成的關卡
@@ -3594,7 +3775,7 @@ function onGameApp() {
 			const filteredAndSortedRaids = raids.filter(a => {
 				if (a.is_own_raid) return false;
 				if (a.is_joined) return false;//排除已進入過的關卡
-				if ((a.enemy_hp / a.enemy_max) < (_publicRaidEnemyHp * 0.01)) return false;//排除血量小於30%
+				if ((a.enemy_hp / a.enemy_max) <= (_publicRaidEnemyHp * 0.01)) return false;//排除血量小於30%
 				if (a.enemy_level <= _publicRaidEnemyLevel) return false;//排除等級
 				if (a.participants >= _publicRaidParticipants) return false;//排除人數
 				return true;
@@ -3708,9 +3889,10 @@ function onGameApp() {
 	 * @description 取得此關卡的前一次的隊伍與幻獸屬性頁
 	 * @param {String} questId - 關卡ID
 	 * @param {String} questType - 關卡類型
+	 * @param {number} questNum - 關卡子章節
 	 * @returns {boolean} 回傳此關卡前一次的隊伍號碼與使用的幻獸屬性頁
 	 */
-	async function getQuestPrevious(questId, questType) {
+	async function getQuestPrevious(questId, questType, questNum = 1) {
 		const defaultData = { prevPartyId: 0, prevSummonElement: 0 };
 		try {
 			if (!_httpClient) { debugLog("HTTP connection not initialized"); return defaultData; }
@@ -3719,7 +3901,8 @@ function onGameApp() {
 				url: `${kh.env.urlRoot}/a_quests/${questId}`,
 				json: { type: questType, account_id: _playerId }
 			});
-			const firstEpisode = detailRes?.body?.episodes?.[0];
+			const questIndex = questNum - 1; 
+			const firstEpisode = detailRes?.body?.episodes?.[questIndex];
 			if (!firstEpisode) return defaultData;
 			return {
 				prevPartyId: firstEpisode.previous_a_party_id || 0,
@@ -3727,7 +3910,6 @@ function onGameApp() {
 			};
 		} catch (error) {
 			debugLog("getQuestPrevious: " + error);
-			debugLog(JSON.stringify(error, null, 2));
 			return defaultData;
 		}
 	}
@@ -3804,8 +3986,8 @@ function onGameApp() {
 					debugLog("challenge limit reached");
 					break;
 				default:
-				debugLog("unknown:" + cannotProgressInfo.type);
-				break;
+					debugLog("unknown:" + cannotProgressInfo.type);
+					break;
 			}
 		} catch (error) {
 			debugLog("showBattleFail: " + error);
@@ -5750,7 +5932,7 @@ function onGameApp() {
 		}
 	}
 	/**
-	 * @description 發送救援討伐 (Raid level 90以下可用)
+	 * @description 發送救援討伐 (Raid level 90以下可用,戰鬥5分鐘以上有效)
 	 */
 	async function battleReliefSubjugation() {
 		try {
@@ -6197,24 +6379,35 @@ function onGameApp() {
 	}
 	/**
 	 * @description 戰鬥結算時等待資訊載入完成
+	 * @returns {boolean} 載入完成回傳true, 逾時回傳false
 	 */
 	async function waitingQuestInfo() {
 		try {
 			let elapsed = 0;
-			const checkInterval = 100;
+			const checkInterval = 80;
+			const timeoutLimit = 31000;
+			const busyInterval = 8000;
+			let nextBusyCheck = busyInterval;
 			_questType = cc.director.getRunningScene().quest_type;
 			while (!_questType) {
 				await sleep(checkInterval);
 				elapsed += checkInterval;
-				if (elapsed >= 8000) {
+				if (elapsed >= timeoutLimit) {
 					debugLog("q_result:timeout!");
-					return;
+					return false;
+				}
+				//發出警告
+				if (elapsed >= nextBusyCheck) {
+					debugLog("server busy!");
+					nextBusyCheck += busyInterval;
 				}
 				_questType = cc.director.getRunningScene().quest_type;
 			}
 		} catch(error) {
 			debugLog("waitingQuestInfo: " + error);
+			return false;
 		}
+		return true;
 	}
 	/**
 	 * @description 當場景切換時被觸發的事件
@@ -6235,8 +6428,14 @@ function onGameApp() {
 					//結算自動補APBP
 					if (_autoAPBPEnabled) {await refillApBpIfNeeded();}
 					//等待場景完成
-					await waitingQuestInfo();
-					_sceneTimeoutId = setTimeout(onQuestResult, 0);
+					if (await waitingQuestInfo()) {
+						_sceneTimeoutId = setTimeout(onQuestResult, 0);
+					} else {
+						const tempSceneName = cc?.director?._runningScene?.sceneName;
+						if (tempSceneName && tempSceneName === "q_001") {
+							await robotRun("onQuestResultTimeout");//通知蘿蔔逾時
+						}
+					}
 					break;
 				case "q_011"://Raid主頁
 					break;
@@ -6697,7 +6896,7 @@ function onLoveScenes() {
 			const skipBtn = document.getElementById('skip-btn');
 			if (skipBtn) {
 				// PC的滑鼠放開
-				const mouseUpEvent = new MouseEvent('mouseup', {bubbles: true, cancelable: true, view: window});
+				const mouseUpEvent = new MouseEvent('mouseup', {bubbles: true, cancelable: true, view: document.defaultView});
 				skipBtn.dispatchEvent(mouseUpEvent);
 				// 觸控的離開
 				const touchEndEvent = new Event('touchend', {bubbles: true, cancelable: true});
