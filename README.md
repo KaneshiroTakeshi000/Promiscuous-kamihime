@@ -1,4 +1,3 @@
-```markdown
 # Promiscuous Kamihime
 
 A Tampermonkey userscript designed for the game *Kamihime Project*. 
