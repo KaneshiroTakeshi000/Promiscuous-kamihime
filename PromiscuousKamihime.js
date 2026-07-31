@@ -1,4 +1,4 @@
-﻿// ==UserScript==
+// ==UserScript==
 // @name         Promiscuous kamihime
 // @description  Unlock hidden potential, satisfy every deep craving.
 // @version      0.8964
@@ -757,6 +757,8 @@ function onGameFrame() {
 				{value: "rescue", text: "RESCUE ID"},
 				{value: "myRaid", text: "MY RAID"},
 				{value: "union", text: "UNION"},
+				{value: "raidEvent", text: "RAID EVENT"},
+				{value: "eidolonOrb", text: "EIDOLON ORB"},
 				{value: "freeMan", text: "FREE MAN"}
 			];
 			//Autonomous Robot
@@ -1707,13 +1709,16 @@ function onGameApp() {
 	let _myRaidQuestLevelMin = GM_getValue("myRaidQuestLevelMin", 109);//Raid關卡等級下限,小於此等級不執行
 	let _myRaidQuestLevelMax = GM_getValue("myRaidQuestLevelMax", 160);//Raid關卡等級上限,大於此等級不執行
 
-	//union Robot資料區
+	//union robot資料區
 	let _unionTimerId = null;//避免重復執行
 	let _unionEventId = 0;//暫存事件ID
 	let _unionPartyID = 0;//暫存隊伍
 	let _unionElement = 0;//暫存支援幻獸屬性
 	let _unionLevel = 0;//暫存進入關卡等級
 	let _janitorMode = GM_getValue("janitorMode", false);//關卡收屍者模式
+
+	//raid event robot資料區
+	let _raidEventID = 0;//暫存事件ID
 
 	//檢視傳輸資訊
 	const _postQueue = [];//建立一個存放送出的Http字串的佇列
@@ -2042,6 +2047,30 @@ function onGameApp() {
 						.fail(this.checkFailedReason.bind(this));
 				}.bind(this), requestData, reqType);
 			}
+			//斷線重連視窗攔截,直接重連
+			kh.HttpConnection._openRetryMessagePopup = function (orgArguments, res) {
+				this._retryAfterMinWait(orgArguments, res, this.retrySettings.minWait)
+			}
+			//修改預設的重試設定參數
+			const retrySettings = kh.HttpConnection.prototype.DEFAULT_RETRY_SETTINGS;
+			if (retrySettings) {
+				retrySettings.minWait = 1000;//重試前等待1秒
+				retrySettings.deadline = Number.POSITIVE_INFINITY;//無限期重試，永不放棄
+				retrySettings.retryCodes = [ 408 ];//HTTP 408才重試
+			}
+			//跳出AP/BP不足的視窗時,點擊回復按鈕
+			const originalOnPopupOpened = kh.PopupFactoryComApRestart.prototype.onPopupOpened;
+			kh.PopupFactoryComApRestart.prototype.onPopupOpened = function (popup, ...args) {
+				const result = originalOnPopupOpened.call(this, popup, ...args);
+				setTimeout(() => {
+					const restartBtn = popup.seekWidgetByName('btn_restart');
+					if (restartBtn) {
+						restartBtn._pushDownEvent();
+						restartBtn._releaseUpEvent();
+					}
+				}, 0);
+				return result;
+			};
 			//動畫加速
 			kh.PlayerGameConfig.prototype.BATTLE_SPEED_SETTINGS.quick = _animationSpeedFactor;
 			debugLog('Animation Speed: ' + _animationSpeedFactor);
@@ -2706,20 +2735,6 @@ function onGameApp() {
 			//fetchMaterialQuest();
 			//fetchAccessoryQuest();
 
-			// const apiAQuestInfo = kh.createInstance("apiAQuestInfo");
-			// if (apiAQuestInfo) {
-			// 	inspectObject(apiAQuestInfo, "apiAQuestInfo");
-			// } else {
-			// 	debugLog("no apiAQuestInfo");
-			// }
-
-			// const apiAAreas = kh.createInstance("apiAAreas");
-			// if (apiAAreas) {
-			// 	inspectObject(apiAAreas, "apiAAreas");
-			// } else {
-			// 	debugLog("no apiAAreas");
-			// }
-
 			// if (!_httpClient) { debugLog("HTTP connection not initialized"); return defaultData; }
 			// //發送請求取得該關卡的詳細資料
 			// const areaId = Math.ceil(64 / 5);
@@ -3001,135 +3016,94 @@ function onGameApp() {
 		try {
 			//debugLog("run robotRun(" + _autonomousRobot + ")." + stepName);
 			//收到事件, 找現在輪值的蘿蔔去做事
+			//submitOrder 用戶提交任務需求
+			//BattleRescue 自發取得救援碼
+			//died 戰鬥中陣亡
+			//onBattleEnd 戰鬥結束
+			//onQuestResult 戰鬥結算
+			//onQuestResultTimeout 戰鬥結算逾時
 			switch (_autonomousRobot) {
 				case "daily":
 					switch (stepName) {
-						case "submitOrder"://用戶提交任務需求
-							result = await robotDailyStart();
-							break;
-						case "BattleRescue"://自發取得救援碼
-							//result = await robotDailyBattleRescue();
-							break;
-						case "died"://戰鬥中陣亡
-							//result = await robotDailyBattleDied();
-							break;
-						case "onBattleEnd"://戰鬥結束
-							//result = await robotDailyBattleEnd();
-							break;
-						case "onQuestResult"://戰鬥結算
-							result = await robotDailyQuestResult();
-							break;
-						case "onQuestResultTimeout"://戰鬥結算逾時
-							break;
+						case "submitOrder":result = await robotDailyStart();break;
+						case "BattleRescue":break;
+						case "died":break;
+						case "onBattleEnd":break;
+						case "onQuestResult":result = await robotDailyQuestResult();break;
+						case "onQuestResultTimeout":break;
 					}
 					break;	
 				case "public":
 					switch (stepName) {
-						case "submitOrder"://用戶提交任務需求
-							if (!_robotPublicRaidTimerId) _robotPublicRaidTimerId = setTimeout(robotPublicRaidTimer, 0);
-							break;
-						case "BattleRescue"://自發取得救援碼
-							//await botPublicRaidBattleRescue();
-							break;
-						case "died"://戰鬥中陣亡
-							if (!_robotPublicRaidTimerId) _robotPublicRaidTimerId = setTimeout(robotPublicRaidTimer, 0);
-							break;
-						case "onBattleEnd"://戰鬥結束
-							//await botPublicRaidBattleEnd();
-							break;
-						case "onQuestResult"://戰鬥結算
-							if (!_robotPublicRaidTimerId) _robotPublicRaidTimerId = setTimeout(robotPublicRaidTimer, 0);
-							break;
-						case "onQuestResultTimeout"://戰鬥結算逾時
-							break;
+						case "submitOrder":if (!_robotPublicRaidTimerId) _robotPublicRaidTimerId = setTimeout(robotPublicRaidTimer, 0);break;
+						case "BattleRescue":break;
+						case "died":if (!_robotPublicRaidTimerId) _robotPublicRaidTimerId = setTimeout(robotPublicRaidTimer, 0);break;
+						case "onBattleEnd":break;
+						case "onQuestResult":if (!_robotPublicRaidTimerId) _robotPublicRaidTimerId = setTimeout(robotPublicRaidTimer, 0);break;
+						case "onQuestResultTimeout":break;
 					}
 					break;
 				case "rescue":
 					switch (stepName) {
-						case "submitOrder"://用戶提交任務需求
-							if (!_robotRescueRaidTimerId) _robotRescueRaidTimerId = setTimeout(robotRescueRaidTimer, 0);
-							break;
-						case "BattleRescue"://自發取得救援碼
-							//result = await botRescueRaidBattleRescue();
-							break;
-						case "died"://戰鬥中陣亡
-							//result = await botRescueRaidBattleDied();
-							break;
-						case "onBattleEnd"://戰鬥結束
-							//result = await botRescueRaidBattleEnd();
-							break;
-						case "onQuestResult"://戰鬥結算
-							if (!_robotRescueRaidTimerId) _robotRescueRaidTimerId = setTimeout(robotRescueRaidTimer, 0);
-							break;
-						case "onQuestResultTimeout"://戰鬥結算逾時
-							break;
+						case "submitOrder":if (!_robotRescueRaidTimerId) _robotRescueRaidTimerId = setTimeout(robotRescueRaidTimer, 0);break;
+						case "BattleRescue":break;
+						case "died":break;
+						case "onBattleEnd":break;
+						case "onQuestResult":if (!_robotRescueRaidTimerId) _robotRescueRaidTimerId = setTimeout(robotRescueRaidTimer, 0);break;
+						case "onQuestResultTimeout":break;
 					}
 					break;
 				case "myRaid":
 					switch (stepName) {
-						case "submitOrder"://用戶提交任務需求
-							result = await robotMyRaidStart();
-							break;
-						case "BattleRescue"://自發取得救援碼
+						case "submitOrder":result = await robotMyRaidStart();break;
+						case "BattleRescue":
 							result = await robotMyRaidBattleRescue();
 							await sleep(_rescueInterval - 1000);
 							break;
-						case "died"://戰鬥中陣亡
-							//result = await botMyRaidBattleDied();
-							break;
-						case "onBattleEnd"://戰鬥結束
-							//result = await botMyRaidBattleEnd();
-							break;
-						case "onQuestResult"://戰鬥結算
-							result = await robotMyRaidStart();
-							break;
-						case "onQuestResultTimeout"://戰鬥結算逾時
-							break;
+						case "died":break;
+						case "onBattleEnd":break;
+						case "onQuestResult":result = await robotMyRaidStart();break;
+						case "onQuestResultTimeout":break;
 					}
 					break;
 				case "union":
 					switch (stepName) {
-						case "submitOrder"://用戶提交任務需求
-							result = await robotUnionStart();
-							break;
-						case "BattleRescue"://自發取得救援碼
-							//result = await botUnionBattleRescue();
-							break;
-						case "died"://戰鬥中陣亡
-							//if (!_unionTimerId) _unionTimerId = setTimeout(botUnionTimer, 0);
-							result = await robotUnionTrigger();
-							break;
-						case "onBattleEnd"://戰鬥結束
-							//result = await botUnionBattleEnd();
-							break;
-						case "onQuestResult"://戰鬥結算
-							//if (!_unionTimerId) _unionTimerId = setTimeout(botUnionTimer, 0);
-							result = await robotUnionTrigger();
-							break;
-						case "onQuestResultTimeout"://戰鬥結算逾時
-							break;
+						case "submitOrder":result = await robotUnionStart();break;
+						case "BattleRescue":break;
+						case "died":result = await robotUnionTrigger();break;
+						case "onBattleEnd":break;
+						case "onQuestResult":result = await robotUnionTrigger();break;
+						case "onQuestResultTimeout":break;
+					}
+					break;
+				case "raidEvent":
+					switch (stepName) {
+						case "submitOrder":result = await robotRaidEventStart();break;
+						case "BattleRescue":break;
+						case "died":break;
+						case "onBattleEnd":break;
+						case "onQuestResult":result = await robotRaidEventTrigger();break;
+						case "onQuestResultTimeout":result = await robotRaidEventTrigger();break;
+					}
+					break;
+				case "eidolonOrb":
+					switch (stepName) {
+						case "submitOrder":result = await robotEidolonOrbStart();break;
+						case "BattleRescue":break;
+						case "died":break;
+						case "onBattleEnd":break;
+						case "onQuestResult":result = await robotFreeManTrigger();break;
+						case "onQuestResultTimeout":result = await robotFreeManTrigger();break;
 					}
 					break;
 				case "freeMan":
 					switch (stepName) {
-						case "submitOrder"://用戶提交任務需求
-							result = await robotFreeManStart();
-							break;
-						case "BattleRescue"://自發取得救援碼
-							//result = await robotFreeManRescue();
-							break;
-						case "died"://戰鬥中陣亡
-							//result = await robotFreeManTrigger();
-							break;
-						case "onBattleEnd"://戰鬥結束
-							//result = await robotFreeManBattleEnd();
-							break;
-						case "onQuestResult"://戰鬥結算
-							result = await robotFreeManTrigger();
-							break;
-						case "onQuestResultTimeout"://戰鬥結算逾時
-							result = await robotFreeManTrigger();
-							break;
+						case "submitOrder":result = await robotFreeManStart();break;
+						case "BattleRescue":break;
+						case "died":break;
+						case "onBattleEnd":break;
+						case "onQuestResult":result = await robotEidolonOrbTrigger();break;
+						case "onQuestResultTimeout":result = await robotEidolonOrbTrigger();break;
 					}
 					break;
 			}
@@ -3140,38 +3114,26 @@ function onGameApp() {
 		return result;
 	}
 	/**
-	 * @description 64-2幻獸點關卡 或是 救援Raid
+	 * @description 幻獸點關卡,主線64-2
 	 */
-	async function robotFreeManStart() {
+	async function robotEidolonOrbStart() {
 		try {
-			//戰鬥中不作用
-			if (_currentSceneName === "battle") return;
-			robotFreeManTrigger();
+			if (_currentSceneName === "battle") return;//戰鬥中不作用
+			robotEidolonOrbTrigger();
 		} catch (error) {
 			debugLog("robotFreeManStart: " + error);
 		}
 	}
 	/**
-	 * @description 測試多種任務轉換, 64-2幻獸點關卡 或是 救援Raid
+	 * @description 幻獸點關卡,主線64-2
 	 * @returns {boolean} 放行程式繼續執行回傳true,否則回傳false
 	 */
-	async function robotFreeManTrigger() {
+	async function robotEidolonOrbTrigger() {
 		try {
-			// const rescueId = await fetchStringFromFirebase();
-			// if (rescueId) {
-			// 	const pureRescueId = rescueId.slice(0, 9);
-			// 	await refillApBpIfNeeded();
-			// 	await settleUnverifiedBattles();
-			// 	if (await joinRescueRaid(pureRescueId)) {
-			// 		await sleep(1000);
-			// 		return false;
-			// 	} else {
-			// 		debugLog("join fail, give up");
-			// 		return true;
-			// 	}
-			// } else {
 			//主線關卡章節
-			const questType = "main";const mainQuestID = 64;const episodeNum = 2;
+			const questType = "main";
+			const mainQuestID = 64;
+			const episodeNum = 2;
 			//取得關卡之前的資訊
 			const main642PrevInfo = await getQuestPrevious(mainQuestID, questType, episodeNum);
 			const prevPartyId = main642PrevInfo.prevPartyId;
@@ -3195,9 +3157,152 @@ function onGameApp() {
 				return false;
 			} else {
 				debugLog("launch fail, give up");
+			}
+		} catch (error) {
+			debugLog("robotSummonPointStart: " + error);
+		}
+	}
+	/**
+	 * @description raid event關卡
+	 */
+	async function robotRaidEventStart() {
+		try {
+			const raidEventType = "raid_event";
+			if (_raidEventID === 0) {
+				//取得活動ID
+				const eventRes = await _httpClient.get({
+					url: kh.env.urlRoot + "/a_banners/event_on_period"
+				});
+				const currentEvent = eventRes.body.data.find((e) => raidEventType === e.event_type);
+				if (!currentEvent) {
+					debugLog("no event id.");
+					return;
+				}
+				_raidEventID = currentEvent.event_id;
+				debugLog("event id: " + _raidEventID);
+			}
+			await robotRaidEventTrigger();
+		} catch (error) {
+			debugLog("robotRaidEventStart: " + error);
+		}
+	}
+	/**
+	 * @description raid event關卡
+	 * @returns {boolean} 放行程式繼續執行回傳true,否則回傳false
+	 */
+	async function robotRaidEventTrigger() {
+		try {
+			const raidEventType = "event_raid";
+			//取得活動道具數量
+			const questRes = await _httpClient.get({
+				url: kh.env.urlRoot + "/a_quests",
+				json: { type: "event", "event_id": _raidEventID}
+			});
+			if (!questRes) {debugLog("no respone.");return true;}
+			if (!questRes.body) {debugLog("no respone.");return true;}
+			if (!questRes.body.data) {debugLog("no respone.");return true;}
+			const questWithItems = questRes.body.data.find(q => q.required_item && q.required_item.length > 0);
+			const itemNum = questWithItems ? questWithItems.required_item[0].possession_amount : 0;
+			let targetQuestId = null;
+			//道具多就刷ragnarok,否則刷expert
+			if (itemNum > 200) {
+				const ragnarokQuest = questRes.body.data.find((q) => q.difficulty === "ragnarok");
+				if (ragnarokQuest) targetQuestId = ragnarokQuest.quest_id;
+			} else {
+				const expertQuest = questRes.body.data.find((q) => q.difficulty === "expert");
+				if (expertQuest) targetQuestId = expertQuest.quest_id;
+			}
+			if (!targetQuestId) {debugLog("no quest Id.");return true;}
+			//取得關卡之前的資訊
+			const questPrevInfo = await getQuestPrevious(targetQuestId, raidEventType);
+			const prevPartyId = questPrevInfo.prevPartyId;
+			const prevSummonElement = questPrevInfo.prevSummonElement;
+			//取得支援幻獸
+			const supportSummonId = await getSupportSummonId(prevSummonElement);
+			//產生入場資訊
+			const currentQuest = {
+				url: `${kh.env.urlRoot}/a_quests/${targetQuestId}/start`,
+				json: {
+					type: raidEventType,
+					a_party_id: prevPartyId,
+					support_a_summon_id: supportSummonId,
+					support_summon_tab_element_type: prevSummonElement,
+				}
+			}
+			//進入關卡
+			if (await launchRaidBattle(currentQuest)) {
+				await sleep(1000);
+				return false;
+			} else {
+				debugLog("launch fail, give up");
 				return true;
 			}
-			//}
+		} catch (error) {
+			debugLog("robotRaidEventTrigger: " + error);
+		}
+		return true;
+	}
+	/**
+	 * @description 64-2幻獸點關卡 或是 救援Raid
+	 */
+	async function robotFreeManStart() {
+		try {
+			//戰鬥中不作用
+			if (_currentSceneName === "battle") return;
+			robotFreeManTrigger();
+		} catch (error) {
+			debugLog("robotFreeManStart: " + error);
+		}
+	}
+	/**
+	 * @description 測試多種任務轉換, 64-2幻獸點關卡 或是 救援Raid
+	 * @returns {boolean} 放行程式繼續執行回傳true,否則回傳false
+	 */
+	async function robotFreeManTrigger() {
+		try {
+			const rescueId = await fetchStringFromFirebase();
+			if (rescueId) {
+				const pureRescueId = rescueId.slice(0, 9);
+				await refillApBpIfNeeded();
+				await settleUnverifiedBattles();
+				if (await joinRescueRaid(pureRescueId)) {
+					await sleep(1000);
+					return false;
+				} else {
+					debugLog("join fail, give up");
+					return true;
+				}
+			} else {
+				//主線關卡章節
+				const questType = "main";
+				const mainQuestID = 64;
+				const episodeNum = 2;
+				//取得關卡之前的資訊
+				const main642PrevInfo = await getQuestPrevious(mainQuestID, questType, episodeNum);
+				const prevPartyId = main642PrevInfo.prevPartyId;
+				const prevSummonElement = main642PrevInfo.prevSummonElement;
+				//取得支援幻獸
+				const supportSummonId = await getSupportSummonId(prevSummonElement);
+				//產生入場資訊
+				const currentQuest = {
+					url: `${kh.env.urlRoot}/a_quests/${mainQuestID}/start`,
+					json: {
+						type: questType,
+						a_party_id: prevPartyId,
+						support_a_summon_id: supportSummonId,
+						support_summon_tab_element_type: prevSummonElement,
+						episode_num: episodeNum
+					}
+				}
+				//進入幻獸點關卡
+				if (await launchRaidBattle(currentQuest)) {
+					await sleep(1000);
+					return false;
+				} else {
+					debugLog("launch fail, give up");
+					return true;
+				}
+			}
 		} catch (error) {
 			debugLog("robotFreeManTrigger: " + error);
 		}
@@ -4120,7 +4225,7 @@ function onGameApp() {
 		try {
 			if (!_httpClient) { debugLog("HTTP connection not initialized"); return; }
 			debugLog("execute luck gacha");
-			const luckCategoriesId = 1000050;
+			const luckCategoriesId = 1000060;//每期加10
 			const cat1Res = await _httpClient.get({
 				url: kh.env.urlRoot + "/gacha_categories"
 			});
