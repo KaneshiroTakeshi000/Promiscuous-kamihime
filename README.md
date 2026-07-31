@@ -9,7 +9,7 @@ This script extends game behavior, unlocks hidden potential, and improves overal
 * **Multi-Platform Support**: Compatible with DMM, Fanza, Johren, Nutaku, EroLabs, and bana-bana.
 * **Automation & Flow Improvement**: Automatically runs on matched game pages to enhance in-game interaction and streamline the overall flow.
 * **Zero Configuration**: Ready to use right out of the box with no manual setup required.
-* **Advanced Customization**: Injects a custom UI panel allowing for game speed adjustments, advanced macros, and quick task automation[cite: 2].
+* **Advanced Customization**: Injects a custom UI panel allowing for game speed adjustments, advanced macros, and quick task automation.
 
 ## Supported Sites
 * DMM
