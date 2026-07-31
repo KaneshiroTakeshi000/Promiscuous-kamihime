@@ -4,7 +4,7 @@
 A Tampermonkey userscript designed for the game *Kamihime Project*. 
 This script extends game behavior, unlocks hidden potential, and improves overall usability and interaction flow across various supported platforms.
 
-![Screenshot](readme.jpg)
+[Screenshot](readme.jpg)
 
 ## Features
 * **Multi-Platform Support**: Compatible with DMM, Fanza, Johren, Nutaku, EroLabs, and bana-bana.
