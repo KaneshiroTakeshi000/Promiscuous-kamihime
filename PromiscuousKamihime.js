@@ -2047,16 +2047,27 @@ function onGameApp() {
 						.fail(this.checkFailedReason.bind(this));
 				}.bind(this), requestData, reqType);
 			}
-			//斷線重連視窗攔截,直接重連
-			kh.HttpConnection._openRetryMessagePopup = function (orgArguments, res) {
-				this._retryAfterMinWait(orgArguments, res, this.retrySettings.minWait)
-			}
 			//修改預設的重試設定參數
-			const retrySettings = kh.HttpConnection.prototype.DEFAULT_RETRY_SETTINGS;
-			if (retrySettings) {
-				retrySettings.minWait = 1000;//重試前等待1秒
-				retrySettings.deadline = Number.POSITIVE_INFINITY;//無限期重試，永不放棄
-				retrySettings.retryCodes = [ 408 ];//HTTP 408才重試
+			kh.HttpConnection.prototype.DEFAULT_RETRY_SETTINGS.minWait = 500;
+			kh.HttpConnection.prototype.DEFAULT_RETRY_SETTINGS.maxCount = 10;
+			kh.HttpConnection.prototype.DEFAULT_RETRY_SETTINGS.deadline = 40000;
+			//斷線重連視窗攔截,直接重連
+			kh.HttpConnection.prototype._processRetryResponse = function (argsData, error, timeMs, resultMsg) {
+				if (!error || !error.body) return false;
+				const [actionFn, reqObj, defer, connStats, reqType] = argsData;
+				connStats.endAt = timeMs;
+				connStats.result = resultMsg;
+				const notifyCenter = kh.createInstance("notificationCenter");
+				notifyCenter.dispatchEvent("connectionEnded", [reqObj.url, connStats, undefined, reqType]);
+				kh.postMessage("removeLoading");
+				if (connStats.count < 20) {
+					this._retryAfterMinWait(argsData, error, 500);
+				} else {
+					kh.postMessage("reload");
+				}
+			};
+			kh.HttpConnection._openRetryMessagePopup = function (argsData, error) {
+				this._retryAfterMinWait(argsData, error, 500);
 			}
 			//跳出AP/BP不足的視窗時,點擊回復按鈕
 			const originalOnPopupOpened = kh.PopupFactoryComApRestart.prototype.onPopupOpened;
@@ -3982,7 +3993,7 @@ function onGameApp() {
 				a_battle_id: item.a_battle_id,
 				a_player_id: _playerId,
 				a_quest_id: item.quest_id,
-				is_own_raid: responseBody.is_own_raid
+				is_own_raid: false
 			});
 			return true; 
 		} catch (error) {
