@@ -3030,7 +3030,7 @@ function onGameApp() {
 						case "died":break;
 						case "onBattleEnd":break;
 						case "onQuestResult":result = await robotDailyQuestResult();break;
-						case "onQuestResultTimeout":break;
+						case "onQuestResultTimeout":result = await robotDailyQuestResult();break;
 					}
 					break;	
 				case "public":
@@ -3050,7 +3050,7 @@ function onGameApp() {
 						case "died":break;
 						case "onBattleEnd":break;
 						case "onQuestResult":if (!_robotRescueRaidTimerId) _robotRescueRaidTimerId = setTimeout(robotRescueRaidTimer, 0);break;
-						case "onQuestResultTimeout":break;
+						case "onQuestResultTimeout":if (!_robotRescueRaidTimerId) _robotRescueRaidTimerId = setTimeout(robotRescueRaidTimer, 0);break;
 					}
 					break;
 				case "myRaid":
@@ -3063,7 +3063,7 @@ function onGameApp() {
 						case "died":break;
 						case "onBattleEnd":break;
 						case "onQuestResult":result = await robotMyRaidStart();break;
-						case "onQuestResultTimeout":break;
+						case "onQuestResultTimeout":result = await robotMyRaidStart();break;
 					}
 					break;
 				case "union":
