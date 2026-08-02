@@ -2069,7 +2069,7 @@ function onGameApp() {
 			kh.HttpConnection._openRetryMessagePopup = function (argsData, error) {
 				this._retryAfterMinWait(argsData, error, 500);
 			}
-			//跳出AP/BP不足的視窗時,點擊回復按鈕
+			//跳出繼續戰鬥的視窗時,點擊回復戰鬥
 			const originalOnPopupOpened = kh.PopupFactoryComApRestart.prototype.onPopupOpened;
 			kh.PopupFactoryComApRestart.prototype.onPopupOpened = function (popup, ...args) {
 				const result = originalOnPopupOpened.call(this, popup, ...args);
@@ -2745,6 +2745,9 @@ function onGameApp() {
 			//fetchElementQuest();
 			//fetchMaterialQuest();
 			//fetchAccessoryQuest();
+			if (_battleWorld) {
+				inspectObject(_battleWorld,"battleWorld");
+			}
 
 			// if (!_httpClient) { debugLog("HTTP connection not initialized"); return defaultData; }
 			// //發送請求取得該關卡的詳細資料
@@ -3103,8 +3106,8 @@ function onGameApp() {
 						case "BattleRescue":break;
 						case "died":break;
 						case "onBattleEnd":break;
-						case "onQuestResult":result = await robotFreeManTrigger();break;
-						case "onQuestResultTimeout":result = await robotFreeManTrigger();break;
+						case "onQuestResult":result = await robotEidolonOrbTrigger();break;
+						case "onQuestResultTimeout":result = await robotEidolonOrbTrigger();break;
 					}
 					break;
 				case "freeMan":
@@ -3113,8 +3116,8 @@ function onGameApp() {
 						case "BattleRescue":break;
 						case "died":break;
 						case "onBattleEnd":break;
-						case "onQuestResult":result = await robotEidolonOrbTrigger();break;
-						case "onQuestResultTimeout":result = await robotEidolonOrbTrigger();break;
+						case "onQuestResult":result = await robotFreeManTrigger();break;
+						case "onQuestResultTimeout":result = await robotFreeManTrigger();break;
 					}
 					break;
 			}
@@ -3599,13 +3602,13 @@ function onGameApp() {
 						}
 					}
 				});
-			//數量為0退出, 然後取出第一個
+			//數量為0退出
 			if (availableBattles.length === 0) {
 				debugLog("no battle");
 				return true; 
 			}
+			//取出第一個
 			const targetBattle = availableBattles[0];
-
 			//使用現在的隊伍
 			const apiAParties = kh.createInstance("apiAParties");
 			const PartyResponse = await apiAParties.getList();
@@ -6419,11 +6422,8 @@ function onGameApp() {
 					}
 				} else {
 					await onAutoBattling();//自動攻擊中
-					if (!_battleWorld._hasCharacters()) {
-						await sleep(1000);//等一秒再確認後備神姬沒有補上
-						if (!_battleWorld._hasCharacters()) {
-							if (!await robotRun("died")) return;
-						}
+					if (await hasNoLivingCharacters()) {
+						if (!await robotRun("died")) return;
 					}
 				}
 				//更新排行
@@ -6455,7 +6455,7 @@ function onGameApp() {
 			//檢查敵方數量
 			const enemyList = _battleWorld.enemyList || [];			
 			//太苦了,人都死光
-			if (!_battleWorld._hasCharacters()) {
+			if (await hasNoLivingCharacters()) {
 				sendQuestText(`${_questType};${enemyList.length};died`);
 				return;
 			} else {
@@ -6478,6 +6478,22 @@ function onGameApp() {
 			}
 		} catch(error) {
 			debugLog("onAutoBattling: " + error);
+		}
+	}
+	/**
+	 * @description 檢查隊伍是否已經全滅
+	 * @returns {Boolean} 若全滅回傳 true，否則回傳 false
+	 */
+	async function hasNoLivingCharacters() {
+		try {
+			const allCharacters = (_battleWorld.characterList || []).concat(_battleWorld.subList || []);
+			const livingCharacters = allCharacters.filter(char => {
+				return char != null && Object.keys(char).length > 0;
+			});
+			return livingCharacters.length === 0;
+		} catch(error) {
+			debugLog("hasNoLivingCharacters: " + error);
+			return false;
 		}
 	}
 	/**
