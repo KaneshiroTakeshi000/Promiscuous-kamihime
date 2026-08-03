@@ -1987,7 +1987,7 @@ function onGameApp() {
 				setTimeout(initNetworkHooks, 500);
 				return;
 			}
-			//廢除路徑或外掛檢查機制?
+			//廢除路徑檢查機制(防外掛?)
 			kh.Monitor.prototype.checkPath = () => {};
 			//初始化 HTTP 連接
 			if (!_httpClient) {_httpClient = kh.createInstance("HttpConnection");}
@@ -2608,7 +2608,13 @@ function onGameApp() {
 		});
 		//排序
 		variables.sort();
-		methods.sort((a, b) => a.name.localeCompare(b.name));
+		methods.sort((a, b) => {
+			if (a.name === 'ctor') return -1;
+			if (b.name === 'ctor') return 1;
+			if (a.name === 'init') return -1;
+			if (a.name === 'init') return -1;
+			return a.name.localeCompare(b.name);
+		});
 		//格式化文字排版
 		let logMsg = `${objName}.Variables/Attributes\n`;
 		if (variables.length > 0) {
@@ -2752,9 +2758,20 @@ function onGameApp() {
 			//fetchMaterialQuest();
 			//fetchAccessoryQuest();
 
-			if (kh) {
-				inspectObject(kh, "kh");
-			}
+			await exportAllSummonData() ;
+
+			// //個人留言板
+			// const raidRes = await _httpClient.get({
+			// 	url: kh.env.urlRoot + "/a_greets",
+			// 	json: { a_player_id: "me" }
+			// });
+			// if (raidRes.body.max_record_count < 1) {
+			// 	debugLog("no greets");
+			// }
+			// debugLog(JSON.stringify(raidRes.body, null, 2));
+			// //公會留言板
+			// const unionRes = await _httpClient.get({url: kh.env.urlRoot + "/a_unions/me/chats"});
+			// debugLog(JSON.stringify(unionRes.body, null, 2));
 
 			// if (!_httpClient) { debugLog("HTTP connection not initialized"); return defaultData; }
 			// //發送請求取得該關卡的詳細資料
@@ -3872,7 +3889,7 @@ function onGameApp() {
 			while (_autonomousRobot === "public") {
 				await refillApBpIfNeeded();
 				await settleUnverifiedBattles();
-				if (await joinPublicRaids()) {
+				if (await joinPublicRaids(false)) {
 					await sleep(100);
 					_robotPublicRaidTimerId = null;
 					return;
@@ -3887,17 +3904,26 @@ function onGameApp() {
 	}
 	/**
 	 * @description 加入公開的RAID關卡,沒有選擇隊伍進場過的會發生錯誤
+	 * @param {Boolean} isEventRaids - 查找公開的 EVENT RAID關卡
 	 */
-	async function joinPublicRaids() {
+	async function joinPublicRaids(isEventRaids) {
 		try {
 			if(!_httpClient){debugLog("HTTP connection not initialized");return;}
-			const RaidRes = await _httpClient.get({
+			//const apiABattles = kh.createInstance("apiABattles");
+			//const raidRes = apiABattles.getRaidRequestList();
+			//const raidRes = apiABattles.getInSessionRaidEventList();
+			let battleKind = "raid_request";
+			if (isEventRaids) battleKind = "in_session_event";
+			const raidRes = await _httpClient.get({
 				url: kh.env.urlRoot + "/a_battles",
-				json: { kind: "raid_request" }
+				json: { kind: battleKind }
 			});
 			//數量檢查
-			if (RaidRes.body.max_record_count < 1) {return false;}
-			const raids = RaidRes.body.data;
+			if (raidRes.body.max_record_count < 1) {return false;}
+			//存在未結算的戰鬥
+			if (raidRes.body.unverified_battle_exist) await settleUnverifiedBattles();
+			//依條件尋找關卡
+			const raids = raidRes.body.data;
 			const filteredAndSortedRaids = raids.filter(a => {
 				if (a.is_own_raid) return false;
 				if (a.is_joined) return false;//排除已進入過的關卡
@@ -3942,8 +3968,7 @@ function onGameApp() {
 				}
 				return false; 
 			}			
-			//進入關卡
-			const responseBody = response.body;
+			//const is_own_raid = response.body.is_own_raid;
 			//進入戰鬥畫面
 			const router = kh.createInstance("router");
 			router.navigate("battle", {
@@ -3951,7 +3976,7 @@ function onGameApp() {
 				a_battle_id: item.a_battle_id,
 				a_player_id: _playerId,
 				a_quest_id: item.quest_id,
-				is_own_raid: responseBody.is_own_raid
+				is_own_raid: false
 			});
 			return true; 
 		} catch (error) {
@@ -3967,6 +3992,8 @@ function onGameApp() {
 	async function joinRescueRaid(rescueCode) {
 		try {
 			if (!_httpClient) {debugLog("HTTP connection not initialized"); return;}
+			//const apiABattles = kh.createInstance("apiABattles");
+			//const rescueRes = await apiABattles.getTwitterRaidRequestList();
 			const rescueRes = await _httpClient.get({
 				url: kh.env.urlRoot + "/a_battles",
 				json: {
@@ -3975,6 +4002,9 @@ function onGameApp() {
 			});
 			//數量檢查
 			if (rescueRes.body.max_record_count < 1) return false;
+			//存在未結算的戰鬥
+			if (rescueRes.body.unverified_battle_exist) await settleUnverifiedBattles();
+			//關卡資訊
 			const item = rescueRes.body.data[0];
 			//查詢前次隊伍與支援幻獸屬性
 			const elementPrevInfo = await getQuestPrevious(item.quest_id, item.quest_type);
@@ -3995,7 +4025,7 @@ function onGameApp() {
 				return false; 
 			}			
 			//進入關卡
-			const responseBody = response.body;
+			//const is_own_raid = response.body.is_own_raid;
 			//進入戰鬥畫面
 			const router = kh.createInstance("router");
 			router.navigate("battle", {
@@ -4055,37 +4085,81 @@ function onGameApp() {
 			}
 			//預設第一隻
 			let selectedId = summonData[0].summon_info.a_summon_id;
-			//依條件選擇
-			//summonData[0].summon_info.a_summon_id //選擇用id
-			//summonData[0].summon_info.summon_id //排序用id
 			//依幻獸屬性頁設置不同挑選條件
+			//5012炎貴, 5021炎皇, 5024朱雀, 5028炎天獄, 5044炎天寶, 5052炎機獸, 5056炎騎, 5060炎鬼神, 炎鬼裝
+			const flamePriority = [5060, 5044, 5028, 5056, 5052, 5021, 5012];
+			//5014水貴, 5020水皇, 5022青龍, 5029冰天獄, 5045水天寶 ,5048水機獸, 5054水騎, 5061水鬼神, 水鬼裝
+			const waterPriority = [5061, 5045, 5029, 5054, 5048, 5020, 5014];
+			//5015風貴, 5017風皇, 5025玄武, 5030風天獄, 5040風天寶, 5051風機獸, 5058風騎, 5064風鬼神, 風鬼裝
+			const widePriority = [5064, 5040, 5030, 5058, 5051, 5017, 5015];
+			//5013雷貴, 5019雷皇, 5023白虎, 5031雷天獄, 5041雷天寶, 5050雷機獸, 5059雷騎, 5062雷鬼神, 雷鬼裝
+			const thunderPriority = [5062, 5041, 5031, 5059, 5050, 5019, 5013];
+			//5011闇貴, 5046闇皇, 5027北斗, 5033闇天獄, 5042闇天寶, 5049闇機獸, 5057闇騎, 5063闇鬼神, 闇鬼裝
+			const darknessPriority = [5063, 5042, 5033, 5057, 5049, 5046, 5011];
+			//5016光貴, 5047光皇, 5026南斗, 5032光天獄, 5043光天寶, 5053光機獸, 5055光騎, 5065光鬼神, 光鬼裝
+			const lightPriority = [5065, 5043, 5032, 5055, 5053, 5047, 5016];
+			//5018幻皇
 			switch (elementType) {
 				case 0://火
-					//5012炎貴, 5021炎皇, 5024朱雀, 5028炎天獄, 5044炎天寶, 5052炎機獸, 5056炎騎, 5060炎鬼神, 炎鬼裝
+					for (const targetId of flamePriority) {
+						const match = summonData.find(summon => summon.summon_info.summon_id === targetId);
+						if (match) {
+							selectedId = match.summon_info.a_summon_id;
+							break;
+						}
+					}
 					break;
 				case 1://水
-					//5014水貴, 5020水皇, 5022青龍, 5029冰天獄, 5045水天寶 ,5048水機獸, 5054水騎, 5061水鬼神, 水鬼裝
+					for (const targetId of waterPriority) {
+						const match = summonData.find(summon => summon.summon_info.summon_id === targetId);
+						if (match) {
+							selectedId = match.summon_info.a_summon_id;
+							break;
+						}
+					}
 					break;
 				case 2://風
-					//5015風貴, 5017風皇, 5025玄武, 5030風天獄, 5040風天寶, 5051風機獸, 5058風騎, 5064風鬼神, 風鬼裝
+					for (const targetId of widePriority) {
+						const match = summonData.find(summon => summon.summon_info.summon_id === targetId);
+						if (match) {
+							selectedId = match.summon_info.a_summon_id;
+							break;
+						}
+					}
 					break;
 				case 3://雷
-					//5013雷貴, 5019雷皇, 5023白虎, 5031雷天獄, 5041雷天寶, 5050雷機獸, 5059雷騎, 5062雷鬼神, 雷鬼裝
+					for (const targetId of thunderPriority) {
+						const match = summonData.find(summon => summon.summon_info.summon_id === targetId);
+						if (match) {
+							selectedId = match.summon_info.a_summon_id;
+							break;
+						}
+					}
 					break;
 				case 4://闇
-					//5011闇貴, 5046闇皇, 5027北斗, 5033闇天獄, 5042闇天寶, 5049闇機獸, 5057闇騎, 5063闇鬼神, 闇鬼裝
+					for (const targetId of darknessPriority) {
+						const match = summonData.find(summon => summon.summon_info.summon_id === targetId);
+						if (match) {
+							selectedId = match.summon_info.a_summon_id;
+							break;
+						}
+					}
 					break;
 				case 5://光
-					//5016光貴, 5047光皇, 5026南斗, 5032光天獄, 5043光天寶, 5053光機獸, 5055光騎, 5065光鬼神, 光鬼裝
+					for (const targetId of lightPriority) {
+						const match = summonData.find(summon => summon.summon_info.summon_id === targetId);
+						if (match) {
+							selectedId = match.summon_info.a_summon_id;
+							break;
+						}
+					}
 					break;
 				case 8://幻
-					//5018幻皇
 					break;
 			}
 			return selectedId;
 		} catch (error) {
 			debugLog("getSupportSummonId: " + error);
-			debugLog(JSON.stringify(error, null, 2));
 			return null;
 		}
 	}
@@ -4219,8 +4293,13 @@ function onGameApp() {
 	 */
 	async function settleUnverifiedBattles() {
 		try {
+			//const apiABattles = kh.createInstance("apiABattles");
 			//檢查有無已結束未結算的戰鬥
-			const apiResponse = await kh.createInstance("apiABattles").getUnverifiedList();
+			//const apiResponse = await apiABattles.getUnverifiedList();
+			const apiResponse = await _httpClient.get({
+				url: `${kh.env.urlRoot}/a_battles`,
+				json: { kind: "unverified" }
+			});
 			const unverifiedRaids = apiResponse?.body?.data;
 			if (!unverifiedRaids || unverifiedRaids.length === 0) return;
 			//debugLog(JSON.stringify(unverifiedRaids, null, 2));
@@ -4228,6 +4307,7 @@ function onGameApp() {
 			for (const raid of unverifiedRaids) {
 				const battleId = raid.a_battle_id;
 				const questType = raid.quest_type;
+				//apiABattles.getBattleResult(battleId, questType);
 				await _httpClient.post({
 					url: `${kh.env.urlRoot}/a_battles/${battleId}/result`,
 					json: { "quest_type": questType }
