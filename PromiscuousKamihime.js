@@ -2174,7 +2174,7 @@ function onGameApp() {
 			kh.env.sendErrorLog = false;
 			//攔截開始戰鬥
 			const originalMethodStart = kh.BattleWorld.prototype._start;
-			kh.BattleWorld.prototype._start = async function new_start(sceneInstanceId) {
+			kh.BattleWorld.prototype._start = async function(sceneInstanceId) {
 				const result = await originalMethodStart.apply(this, [sceneInstanceId]);
 				setTimeout(onBattleStart, 0);
 				return result;
@@ -2592,6 +2592,12 @@ function onGameApp() {
 						valSuffix = ` = ${value}`;
 					} else if (Array.isArray(value)) {
 						valSuffix = ` = new Array(${value.length})`;
+					} else if (typeof value === 'object') {
+						// 取得物件的 Constructor 名稱（例如: "Sprite", "Node", "Object"）
+						const className = value.constructor && value.constructor.name ? value.constructor.name : "Object";
+						valSuffix = ` = null; // ${className}`;
+					} else {
+						valSuffix = " = null;";
 					}
 					variables.push(`${keyStr}${valSuffix};`);
 				}
@@ -2745,8 +2751,9 @@ function onGameApp() {
 			//fetchElementQuest();
 			//fetchMaterialQuest();
 			//fetchAccessoryQuest();
-			if (_battleWorld) {
-				inspectObject(_battleWorld,"battleWorld");
+
+			if (kh) {
+				inspectObject(kh, "kh");
 			}
 
 			// if (!_httpClient) { debugLog("HTTP connection not initialized"); return defaultData; }
@@ -6565,6 +6572,7 @@ function onGameApp() {
 					} else {
 						const tempSceneName = cc?.director?._runningScene?.sceneName;
 						if (tempSceneName && tempSceneName === "q_001") {
+							await settleUnverifiedBattles();//檢查未完成
 							await robotRun("onQuestResultTimeout");//通知蘿蔔逾時
 						}
 					}
