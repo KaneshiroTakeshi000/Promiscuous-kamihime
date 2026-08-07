@@ -115,7 +115,7 @@ function onDocumentEnd() {
 		} else if (pathname === "/front/cocos2d-proj/components-pc/scenario/anim-player.html") {
 			onLoveScenes();//寢室頁面
 		} else if (pathname === "/front/index.html") {
-			console.log("FRONT");//遊戲禁止頁面(維修,倒閉,封鎖)
+			console.log("FRONT");
 		} else {
 			// 遊戲框架入口
 			const GAME_FRAME_DOMAINS = [
@@ -177,6 +177,8 @@ function onPortal() {
  * @description 遊戲起始頁，使用 cocos2d 引擎
  */
 function onGameTop() {
+	let _startTime = 0;
+
 	init();
 	/**
 	 * @description 初始化遊戲起始頁
@@ -194,6 +196,7 @@ function onGameTop() {
 				return;
 			}
 			debugLog("Game Start page OK");
+			_startTime = Date.now();
 			setTimeout(executeGameStart, 2000);
 		} catch(error) {
 			debugLog("onGameTopLoad: " + error);
@@ -204,14 +207,16 @@ function onGameTop() {
 	 */
 	async function executeGameStart() {
 		try{
+			const elapsedTime = Date.now() - _startTime;
+			if (elapsedTime > 10000) return;
+
 			const currentScene = cc?.director?.getRunningScene();
 			if (currentScene) {
 				const btnGameStart = currentScene.seekWidgetByName("top_btn_gamestart_mouse_over");
 				if (btnGameStart) {
 					await simulateTouch(btnGameStart);
-				} else {
-					setTimeout(executeGameStart, 1000);
 				}
+				setTimeout(executeGameStart, 1000);
 			} else {
 				setTimeout(executeGameStart, 1000);
 			}
@@ -1496,6 +1501,10 @@ function onGameFrame() {
 			const testScreen = await waitForElement(".test-screen.center-block");
 			testScreen.style.width = width;
 			testScreen.style.paddingBottom = "50px";
+			//調整位置
+			testScreen.style.marginLeft = "134px";
+			testScreen.style.marginRight = "auto";
+			testScreen.style.display = "block";
 
 			const gameOuter = await waitForElement("#game-outer");
 			gameOuter.style.width = width;
@@ -1660,7 +1669,7 @@ function onGameApp() {
 	let _autoBattleModeEnabled = GM_getValue("isAutoBattleModeEnabled", false);//開場自動戰鬥模式
 	let _autoAPBPEnabled = GM_getValue("isAutoApBpRefillEnabled", false);//結算自動補給
 	let _autoReloadEnabled = GM_getValue("isAutoReloadEnabled", false);//自動戰鬥時閒置重整(防卡)
-	const _autoReloadWaiting = 20000;//閒置時間
+	const _autoReloadWaiting = 10000;//閒置時間
 	let _logPacketsEnabled = GM_getValue("isPacketLoggingEnabled", false);//輸出傳輸資訊
 	let _logBattleEnabled = GM_getValue("isBattleLoggingEnabled", false);//輸出戰鬥資訊
 	let _connectingVisible = GM_getValue("hideConnectingScreen", false);//Connecting畫面
@@ -1701,6 +1710,7 @@ function onGameApp() {
 	let _publicRaidEnemyHp = GM_getValue("publicRaidEnemyHp", 30.0);//必須高於此血量(%)
 	let _publicRaidParticipants = GM_getValue("publicRaidParticipants", 8);//必須小於此人數
 	let _publicRaidEnemyLevel = GM_getValue("publicRaidEnemyLevel", 109);//必須大於此等級
+	let _publicRaidType = GM_getValue("publicRaidType", 0);//0:一般Raid優先, 1:事件Raid優先
 
 	//rescue raid robot 與 my raid robot 資料區
 	let _robotRescueRaidTimerId = null;//避免重復執行
@@ -1993,6 +2003,7 @@ function onGameApp() {
 			if (!_httpClient) {_httpClient = kh.createInstance("HttpConnection");}
 			//攔截所有發往遊戲伺服器的 GET 請求
 			//const originalKhGet = kh.HttpConnection.prototype.get;
+			kh.HttpConnection.prototype.getRaw = kh.HttpConnection.prototype.get;
 			kh.HttpConnection.prototype.get = function (requestData, reqType = "normal") {
 				_postQueue.push(JSON.stringify( {...requestData, method: 'get'}));//加入佇列
 				flushRequestQueue();//啟動解析佇列
@@ -2007,6 +2018,7 @@ function onGameApp() {
 			//網路傳輸攔截
 			//const originalKhPost = kh.HttpConnection.prototype.post;
 			//攔截所有發往遊戲伺服器的 POST 請求
+			kh.HttpConnection.prototype.postRaw = kh.HttpConnection.prototype.post;
 			kh.HttpConnection.prototype.post = function (requestData, reqType = "normal") {
 				_postQueue.push(JSON.stringify({...requestData, method: 'post'}));//加入佇列
 				flushRequestQueue();//啟動解析佇列
@@ -2028,6 +2040,7 @@ function onGameApp() {
 			};
 			//攔截所有發往遊戲伺服器的 PUT 請求
 			//const originalKhPut = kh.HttpConnection.prototype.put;
+			kh.HttpConnection.prototype.putRaw = kh.HttpConnection.prototype.put;
 			kh.HttpConnection.prototype.put = function (requestData, reqType = "normal") {
 				_postQueue.push(JSON.stringify({...requestData, method: 'put'}));//加入佇列
 				flushRequestQueue();//啟動解析佇列
@@ -2052,6 +2065,7 @@ function onGameApp() {
 			kh.HttpConnection.prototype.DEFAULT_RETRY_SETTINGS.maxCount = 10;
 			kh.HttpConnection.prototype.DEFAULT_RETRY_SETTINGS.deadline = 40000;
 			//斷線重連視窗攔截,直接重連
+			kh.HttpConnection.prototype._processRetryResponseRaw = kh.HttpConnection.prototype._processRetryResponse;
 			kh.HttpConnection.prototype._processRetryResponse = function (argsData, error, timeMs, resultMsg) {
 				if (!error || !error.body) return false;
 				const [actionFn, reqObj, defer, connStats, reqType] = argsData;
@@ -2071,6 +2085,7 @@ function onGameApp() {
 			}
 			//跳出繼續戰鬥的視窗時,點擊回復戰鬥
 			const originalOnPopupOpened = kh.PopupFactoryComApRestart.prototype.onPopupOpened;
+			kh.PopupFactoryComApRestart.prototype.onPopupOpenedRaw = kh.PopupFactoryComApRestart.prototype.onPopupOpened;
 			kh.PopupFactoryComApRestart.prototype.onPopupOpened = function (popup, ...args) {
 				const result = originalOnPopupOpened.call(this, popup, ...args);
 				setTimeout(() => {
@@ -2174,6 +2189,7 @@ function onGameApp() {
 			kh.env.sendErrorLog = false;
 			//攔截開始戰鬥
 			const originalMethodStart = kh.BattleWorld.prototype._start;
+        	kh.BattleWorld.prototype._startRaw = kh.BattleWorld.prototype._start;
 			kh.BattleWorld.prototype._start = async function(sceneInstanceId) {
 				const result = await originalMethodStart.apply(this, [sceneInstanceId]);
 				setTimeout(onBattleStart, 0);
@@ -2181,12 +2197,14 @@ function onGameApp() {
 			}			
 			//攔截戰鬥結束
 			const originalMethodEndBattle = kh.BattleWorld.prototype.endBattle;
+			kh.BattleWorld.prototype.endBattleRaw = kh.BattleWorld.prototype.endBattle;
 			kh.BattleWorld.prototype.endBattle = async function(isForcedRelease) {
 				setTimeout(onBattleEnd, 0);
 				return originalMethodEndBattle.call(this, isForcedRelease);
 			}
 			//攔截戰鬥回合數
 			const originalMethodSetTurnNumber = kh.Turn.prototype.setTurnNumber;
+			kh.Turn.prototype.setTurnNumberRaw = kh.Turn.prototype.setTurnNumber;
 			kh.Turn.prototype.setTurnNumber = function (t) {
 				const result = originalMethodSetTurnNumber.call(this, t);
 				sendTurnText(t+1);
@@ -2194,28 +2212,33 @@ function onGameApp() {
 			}	
 			//攔截自己的戰鬥指令,檢測自動戰鬥中卡住的情況
 			const originalMethodUseAbility = kh.BattleWorld.prototype.useAbility;
+			kh.BattleWorld.prototype.useAbilityRaw = kh.BattleWorld.prototype.useAbility;
 			kh.BattleWorld.prototype.useAbility = function(character, abilityPos, abilityTarget) {
 				_playerActionTime = new Date();
 				return originalMethodUseAbility.call(this, character, abilityPos, abilityTarget);
 			}
 			const originalMethodSummonAttack = kh.BattleWorld.prototype.summonAttack;
+			kh.BattleWorld.prototype.summonAttackRaw = kh.BattleWorld.prototype.summonAttack;
 			kh.BattleWorld.prototype.summonAttack = function(index) {
 				_playerActionTime = new Date();
 				return originalMethodSummonAttack.call(this, index);
 			}
 			const originalMethodAttack = kh.BattleWorld.prototype.attack;
+			kh.BattleWorld.prototype.attackkRaw = kh.BattleWorld.prototype.attack;
 			kh.BattleWorld.prototype.attack = function() {
 				_playerActionTime = new Date();
 				return originalMethodAttack.call(this);
 			}
 			//顯示Raid中自己的動作
 			const origMethodEnqueueOwnScenario = kh.RaidScenarioPlayer.prototype.enqueueOwnScenario;
+			kh.RaidScenarioPlayer.prototype.enqueueOwnScenarioRaw = kh.RaidScenarioPlayer.prototype.enqueueOwnScenario;
 			kh.RaidScenarioPlayer.prototype.enqueueOwnScenario = async function(scenarioData) {
 				if (_logBattleEnabled) {onRaidActionSelf(scenarioData);}
 				return origMethodEnqueueOwnScenario.apply(this, [scenarioData]);
 			}
 			//顯示Raid中隊友的動作
 			const origMethodPostLog = kh.RaidMessageHandler.prototype._postLog;
+			kh.RaidMessageHandler.prototype._postLogRaw = kh.RaidMessageHandler.prototype._postLog;
 			kh.RaidMessageHandler.prototype._postLog = async function(message) {
 				if (_logBattleEnabled) {onRaidActionTeammate(message);}
 				return origMethodPostLog.apply(this, [message]);
@@ -2757,8 +2780,16 @@ function onGameApp() {
 			//fetchElementQuest();
 			//fetchMaterialQuest();
 			//fetchAccessoryQuest();
+			//await exportAllSummonData() ;
+			//await exportAllSoulData();
+			//await exportAllWeaponData();
 
-			await exportAllSummonData() ;
+			const rescueId = await battleGetRescueId();//救援碼
+			if (rescueId) {
+				sendStringToFirebase(rescueId);
+			} else {
+				debugLog("no rescue id");
+			}
 
 			// //個人留言板
 			// const raidRes = await _httpClient.get({
@@ -3351,6 +3382,11 @@ function onGameApp() {
 	 */
 	async function robotDailyStart() {
 		try {
+			//結算畫面時先跳至主頁,避免與結算觸發的程序衝突
+			if (_currentSceneName === "q_result") {
+				const router = kh.createInstance("router");
+				if (router) router.navigate("mypage/my_001");
+			}
 			//每日免費水晶
 			const coinShopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/1`});
 				if (coinShopRes?.body?.catalogs) {
@@ -3886,9 +3922,11 @@ function onGameApp() {
 	async function robotPublicRaidTimer() {
 		try {
 			debugLog("Search some raid...");
+			await refillApBpIfNeeded();
+			await settleUnverifiedBattles();
 			while (_autonomousRobot === "public") {
-				await refillApBpIfNeeded();
-				await settleUnverifiedBattles();
+				//_publicRaidType
+				//0:一般Raid優先, 1:事件Raid優先
 				if (await joinPublicRaids(false)) {
 					await sleep(100);
 					_robotPublicRaidTimerId = null;
@@ -5047,7 +5085,7 @@ function onGameApp() {
 		}
 	}
 	/**
-	 * @description 背景閱讀所有寢室劇情,領取魔水晶
+	 * @description 背景閱讀寢室劇情,領取魔水晶
 	 */
 	async function autoPlayUnreadEpisodes() {
 		try {
@@ -5296,16 +5334,11 @@ function onGameApp() {
 	async function exportAllHimeData() {
 		try{
 			const charas = [];
-			//早期編號
-			for (let i = 1; i < 100; i++) {charas.push(i);}
-			//R
-			for (let i = 7001; i < 7300; i++) {charas.push(i);}
-			//SR
-			for (let i = 6001; i < 6400; i++) {charas.push(i);}
-			//SSR
-			for (let i = 5001; i < 5600; i++) {charas.push(i);}
-			//真化
-			for (let i = 9001; i < 9040; i++) {charas.push(i);}
+			for (let i = 1; i < 100; i++) {charas.push(i);}//早期編號
+			for (let i = 7001; i < 7300; i++) {charas.push(i);}//R
+			for (let i = 6001; i < 6400; i++) {charas.push(i);}//SR
+			for (let i = 5001; i < 5600; i++) {charas.push(i);}//SSR
+			for (let i = 9001; i < 9040; i++) {charas.push(i);}//真化
 			//查詢神姬
 			const himeMap = {};
 			for (let i = 0; i < charas.length; i++) {
@@ -5313,26 +5346,16 @@ function onGameApp() {
 				const chara = charas[i];
 				try {
 					//查詢神姬詳細資料
-					const detailRes = await _httpClient.get({
-						url: kh.env.urlRoot + "/characters/" + chara
-					});
+					const detailRes = await _httpClient.get({url: kh.env.urlRoot + "/characters/" + chara});
 					if (detailRes && detailRes.body) {
 						const himeName = detailRes.body.name;//取得神姬名字
 						debugLog("load " + (i+1) + " | " + charas.length + ", id = " + chara + ", " + himeName);
 						let currentData = "";
 						switch (_language) {
-							case 0:
-								currentData = transformCharaData_jp(detailRes.body);
-								break;
-							case 1:
-								currentData = transformCharaData_cht(detailRes.body);
-								break;
-							case 2:
-								currentData = transformCharaData_en(detailRes.body);
-								break;
-							default:
-								currentData = detailRes.body;
-								break;
+							case 0:currentData = transformCharaData_jp(detailRes.body);break;
+							case 1:currentData = transformCharaData_cht(detailRes.body);break;
+							case 2:currentData = transformCharaData_en(detailRes.body);break;
+							default:currentData = detailRes.body;break;
 						}
 						//以名字作為 Key 存入物件
 						if (himeMap[himeName]) {debugLog("重複資料: " + himeName + " (" + chara + ")");}
@@ -5490,18 +5513,10 @@ function onGameApp() {
 						debugLog("load " + (i+1) + " | " + weaponIds.length + ", id = " + weaponId + ", " + weaponName);
 						let currentData = "";
 						switch (_language) {
-							case 0:
-								currentData = transformWeaponData_jp(detailRes.body);
-								break;
-							case 1:
-								currentData = transformWeaponData_cht(detailRes.body);
-								break;
-							case 2:
-								currentData = transformWeaponData_en(detailRes.body);
-								break;
-							default:
-								currentData = detailRes.body;
-								break;
+							case 0:currentData = transformWeaponData_jp(detailRes.body);break;
+							case 1:currentData = transformWeaponData_cht(detailRes.body);break;
+							case 2:currentData = transformWeaponData_en(detailRes.body);break;
+							default:currentData = detailRes.body;break;
 						}
 						weaponMap[weaponName] = currentData;
 					}
@@ -5532,12 +5547,12 @@ function onGameApp() {
 					element_type: source.element_type ?? 0,//元素屬性
 					weapon_type: source.weapon_type ?? "",//種類
 					can_arouse: source.can_arouse ?? false,//終突
-					skill_1_name_cht : source.aroused_2_status?.skills?.[0]?.name ?? "",//1技名稱
-					skill_1_description_cht : source.aroused_2_status?.skills?.[0]?.description ?? "",//1技描述
-					skill_1_type : source.aroused_2_status?.skills?.[0]?.type,//1技類型
-					skill_2_name_cht : source.aroused_2_status?.skills?.[0]?.name ?? "",//2技名稱
-					skill_2_description_cht : source.aroused_2_status?.skills?.[0]?.description ?? "",//2技描述
-					skill_2_type : source.aroused_2_status?.skills?.[0]?.type,//2技類型
+					skill_1_name_cht: source.aroused_2_status?.skills?.[0]?.name ?? "",//1技名稱
+					skill_1_description_cht: source.aroused_2_status?.skills?.[0]?.description ?? "",//1技描述
+					skill_1_type: source.aroused_2_status?.skills?.[0]?.type,//1技類型
+					skill_2_name_cht: source.aroused_2_status?.skills?.[0]?.name ?? "",//2技名稱
+					skill_2_description_cht: source.aroused_2_status?.skills?.[0]?.description ?? "",//2技描述
+					skill_2_type: source.aroused_2_status?.skills?.[0]?.type,//2技類型
 					burst_name_cht: source.aroused_2_status?.burst?.name,//爆發名稱
 					burst_description_cht: source.aroused_2_status?.burst?.description//爆發描述
 				};
@@ -5549,30 +5564,98 @@ function onGameApp() {
 					element_type: source.element_type ?? 0,//元素屬性
 					weapon_type: source.weapon_type ?? "",//種類
 					can_arouse: source.can_arouse ?? false,//終突
-					skill_1_name_cht : source.aroused_status?.skills?.[0]?.name ?? "",//1技名稱
-					skill_1_description_cht : source.aroused_status?.skills?.[0]?.description ?? "",//1技描述
-					skill_1_type : source.aroused_status?.skills?.[0]?.type,//1技類型
-					skill_2_name_cht : source.aroused_status?.skills?.[0]?.name ?? "",//2技名稱
-					skill_2_description_cht : source.aroused_status?.skills?.[0]?.description ?? "",//2技描述
-					skill_2_type : source.aroused_status?.skills?.[0]?.type,//2技類型
+					skill_1_name_cht: source.aroused_status?.skills?.[0]?.name ?? "",//1技名稱
+					skill_1_description_cht: source.aroused_status?.skills?.[0]?.description ?? "",//1技描述
+					skill_1_type: source.aroused_status?.skills?.[0]?.type,//1技類型
+					skill_2_name_cht: source.aroused_status?.skills?.[0]?.name ?? "",//2技名稱
+					skill_2_description_cht: source.aroused_status?.skills?.[0]?.description ?? "",//2技描述
+					skill_2_type: source.aroused_status?.skills?.[0]?.type,//2技類型
 					burst_name_cht: source.aroused_status?.burst?.name,//爆發名稱
 					burst_description_cht: source.aroused_status?.burst?.description//爆發描述
 				};
 			}
 		}
 		/**
-		 * @description (待完成)英文版武器要儲存的欄位與資訊
+		 * @description 英文版武器要儲存的欄位與資訊
 		 */
 		function transformWeaponData_en(source) {
 			if (!source) return null;
-			return source;
+			if (source.can_arouse) {
+				return {
+					weapon_id: source.weapon_id ?? "",//查詢用ID
+					name_en: source.name ?? "",//名稱
+					rarity: source.rare ?? "",//稀有度
+					element_type: source.element_type ?? 0,//元素屬性
+					weapon_type: source.weapon_type ?? "",//種類
+					can_arouse: source.can_arouse ?? false,//終突
+					skill_1_name_en: source.aroused_2_status?.skills?.[0]?.name ?? "",//1技名稱
+					skill_1_description_en: source.aroused_2_status?.skills?.[0]?.description ?? "",//1技描述
+					skill_1_type: source.aroused_2_status?.skills?.[0]?.type,//1技類型
+					skill_2_name_en: source.aroused_2_status?.skills?.[0]?.name ?? "",//2技名稱
+					skill_2_description_en: source.aroused_2_status?.skills?.[0]?.description ?? "",//2技描述
+					skill_2_type: source.aroused_2_status?.skills?.[0]?.type,//2技類型
+					burst_name_en: source.aroused_2_status?.burst?.name,//爆發名稱
+					burst_description_en: source.aroused_2_status?.burst?.description//爆發描述
+				};
+			} else {
+				return {
+					weapon_id: source.weapon_id ?? "",//查詢用ID
+					name_en: source.name ?? "",//名稱
+					rarity: source.rare ?? "",//稀有度
+					element_type: source.element_type ?? 0,//元素屬性
+					weapon_type: source.weapon_type ?? "",//種類
+					can_arouse: source.can_arouse ?? false,//終突
+					skill_1_name_en: source.aroused_status?.skills?.[0]?.name ?? "",//1技名稱
+					skill_1_description_en: source.aroused_status?.skills?.[0]?.description ?? "",//1技描述
+					skill_1_type: source.aroused_status?.skills?.[0]?.type,//1技類型
+					skill_2_name_en: source.aroused_status?.skills?.[0]?.name ?? "",//2技名稱
+					skill_2_description_en: source.aroused_status?.skills?.[0]?.description ?? "",//2技描述
+					skill_2_type: source.aroused_status?.skills?.[0]?.type,//2技類型
+					burst_name_en: source.aroused_status?.burst?.name,//爆發名稱
+					burst_description_en: source.aroused_status?.burst?.description//爆發描述
+				};
+			}
 		}
 		/**
-		 * @description (待完成)日文版武器要儲存的欄位與資訊
+		 * @description 日文版武器要儲存的欄位與資訊
 		 */
 		function transformWeaponData_jp(source) {
 			if (!source) return null;
-			return source;
+			if (source.can_arouse) {
+				return {
+					weapon_id: source.weapon_id ?? "",//查詢用ID
+					name_jp: source.name ?? "",//名稱
+					rarity: source.rare ?? "",//稀有度
+					element_type: source.element_type ?? 0,//元素屬性
+					weapon_type: source.weapon_type ?? "",//種類
+					can_arouse: source.can_arouse ?? false,//終突
+					skill_1_name_jp: source.aroused_2_status?.skills?.[0]?.name ?? "",//1技名稱
+					skill_1_description_jp: source.aroused_2_status?.skills?.[0]?.description ?? "",//1技描述
+					skill_1_type: source.aroused_2_status?.skills?.[0]?.type,//1技類型
+					skill_2_name_jp: source.aroused_2_status?.skills?.[0]?.name ?? "",//2技名稱
+					skill_2_description_jp: source.aroused_2_status?.skills?.[0]?.description ?? "",//2技描述
+					skill_2_type: source.aroused_2_status?.skills?.[0]?.type,//2技類型
+					burst_name_jp: source.aroused_2_status?.burst?.name,//爆發名稱
+					burst_description_jp: source.aroused_2_status?.burst?.description//爆發描述
+				};
+			} else {
+				return {
+					weapon_id: source.weapon_id ?? "",//查詢用ID
+					name_jp: source.name ?? "",//名稱
+					rarity: source.rare ?? "",//稀有度
+					element_type: source.element_type ?? 0,//元素屬性
+					weapon_type: source.weapon_type ?? "",//種類
+					can_arouse: source.can_arouse ?? false,//終突
+					skill_1_name_jp: source.aroused_status?.skills?.[0]?.name ?? "",//1技名稱
+					skill_1_description_jp: source.aroused_status?.skills?.[0]?.description ?? "",//1技描述
+					skill_1_type: source.aroused_status?.skills?.[0]?.type,//1技類型
+					skill_2_name_jp: source.aroused_status?.skills?.[0]?.name ?? "",//2技名稱
+					skill_2_description_jp: source.aroused_status?.skills?.[0]?.description ?? "",//2技描述
+					skill_2_type: source.aroused_status?.skills?.[0]?.type,//2技類型
+					burst_name_jp: source.aroused_status?.burst?.name,//爆發名稱
+					burst_description_jp: source.aroused_status?.burst?.description//爆發描述
+				};
+			}
 		}
 	}
 	/**
@@ -5603,18 +5686,10 @@ function onGameApp() {
 						debugLog("load " + (i+1) + " | " + summonsIds.length + ", id = " + summonId + ", " + summonName);
 						let currentData = "";
 						switch (_language) {
-							case 0:
-								currentData = transformSummonnData_jp(detailRes.body);
-								break;
-							case 1:
-								currentData = transformSummonnData_cht(detailRes.body);
-								break;
-							case 2:
-								currentData = transformSummonnData_en(detailRes.body);
-								break;
-							default:
-								currentData = detailRes.body;
-								break;
+							case 0:currentData = transformSummonnData_jp(detailRes.body);break;
+							case 1:currentData = transformSummonnData_cht(detailRes.body);break;
+							case 2:currentData = transformSummonnData_en(detailRes.body);break;
+							default:currentData = detailRes.body;break;
 						}
 						summonsMap[summonName] = currentData;
 					}
@@ -5653,18 +5728,44 @@ function onGameApp() {
 			};
 		}
 		/**
-		 * @description (待完成)英文版幻獸要儲存的欄位與資訊
+		 * @description 英文版幻獸要儲存的欄位與資訊
 		 */
 		function transformSummonnData_en(source) {
 			if (!source) return null;
-			return source.body;
+			return {
+				summon_id: source.summon_id ?? "",//查詢用ID
+				name_en: source.name ?? "",//名稱
+				rarity: source.rare ?? "",//稀有度
+				element_type: source.element_type ?? 0,//元素屬性
+				can_final_evolve: source.can_final_evolve ?? false,//終突
+				attack_name_en: source.status.final.attack.name ?? "",//招喚攻擊名稱
+				attack_description_en: source.status.final.attack.description ?? "",//招喚攻擊描述
+				attack_turn: source.status.final.attack.turn ?? 0,//招喚攻擊冷卻回合
+				main_effect_name_en: source.status.final.summon_main_effect.name ?? "",//主幻效果名稱
+				main_effect_description_en: source.status.final.summon_main_effect.description ?? "",//主幻效果描述
+				sub_effect_name_en: source.status.final.summon_sub_effect.name ?? "",//副幻效果名稱
+				sub_effect_description_en: source.status.final.summon_sub_effect.description ?? ""//副幻效果描述
+			};
 		}
 		/**
-		 * @description (待完成)日文版幻獸要儲存的欄位與資訊
+		 * @description 日文版幻獸要儲存的欄位與資訊
 		 */
 		function transformSummonnData_jp(source) {
 			if (!source) return null;
-			return source.body;
+			return {
+				summon_id: source.summon_id ?? "",//查詢用ID
+				name_jpn: source.name ?? "",//名稱
+				rarity: source.rare ?? "",//稀有度
+				element_type: source.element_type ?? 0,//元素屬性
+				can_final_evolve: source.can_final_evolve ?? false,//終突
+				attack_name_jp: source.status.final.attack.name ?? "",//招喚攻擊名稱
+				attack_description_jp: source.status.final.attack.description ?? "",//招喚攻擊描述
+				attack_turn: source.status.final.attack.turn ?? 0,//招喚攻擊冷卻回合
+				main_effect_name_jp: source.status.final.summon_main_effect.name ?? "",//主幻效果名稱
+				main_effect_description_jp: source.status.final.summon_main_effect.description ?? "",//主幻效果描述
+				sub_effect_name_jp: source.status.final.summon_sub_effect.name ?? "",//副幻效果名稱
+				sub_effect_description_jp: source.status.final.summon_sub_effect.description ?? ""//副幻效果描述
+			};
 		}
 	}
 	/**
@@ -5686,7 +5787,14 @@ function onGameApp() {
 					if (detailRes && detailRes.body) {
 						const jobName = detailRes.body.name;//取得英靈名字
 						debugLog("load " + (i+1) + " | " + jobIds.length + ", id = " + jobId + ", " + jobName);
-						let currentData = detailRes.body;
+						let currentData = "";
+						switch (_language) {
+							case 0:currentData = transformSoulData_jp(detailRes.body);break;
+							case 1:currentData = transformSoulData_cht(detailRes.body);break;
+							case 2:currentData = transformSoulData_en(detailRes.body);break;
+							default:currentData = detailRes.body;break;
+						}
+
 						jobMap[jobName] = currentData;
 					}
 				} catch (error) {
@@ -5702,6 +5810,36 @@ function onGameApp() {
 			exportToJsonFile(JSON.stringify(jobList, null, 2));
 		} catch(error) {
 			debugLog("exportAllSoulData: " + error);
+		}
+		/**
+		 * @description 中文版英靈要儲存的欄位與資訊
+		 */
+		function transformSoulData_cht(source) {
+			if (!source) return null;
+			return {
+				job_id: source.job_id ?? "",//查詢用ID
+				name_cht: source.name ?? "",//名稱
+			};
+		}
+		/**
+		 * @description 英文版英靈要儲存的欄位與資訊
+		 */
+		function transformSoulData_en(source) {
+			if (!source) return null;
+			return {
+				job_id: source.job_id ?? "",//查詢用ID
+				name_en: source.name ?? "",//名稱
+			};
+		}
+		/**
+		 * @description 日文版英靈要儲存的欄位與資訊
+		 */
+		function transformSoulData_jp(source) {
+			if (!source) return null;
+			return {
+				job_id: source.job_id ?? "",//查詢用ID
+				name_jp: source.name ?? "",//名稱
+			};
 		}
 	}
 	/**
@@ -5978,7 +6116,7 @@ function onGameApp() {
 		try {
 			if (_enemyLevel < _raidHelpLevel) return;
 
-			let questInfo = kh.createInstance("questInfo");
+			const questInfo = kh.createInstance("questInfo");
 			if (questInfo._isOwnRaid) {
 				const rescueId = await battleGetRescueId();//救援碼
 				if (rescueId) {
@@ -6039,16 +6177,18 @@ function onGameApp() {
 	 * @description 獲取本場多人戰鬥的救援碼
 	 */
 	async function battleGetRescueId() {
+		let result = "";
 		try {
-			if (_questType !== "raid") return;
-			const apiBattle = _battleWorld?.backendAPI;
-			if(!apiBattle) return;
-			const rescueIdRes = await apiBattle.postRescueId(_questType);
-			return rescueIdRes.body.rescue_code;
+			if (_questType === "raid" || _questType === "event_raid"){
+				const apiBattle = _battleWorld?.backendAPI;
+				if(!apiBattle) return "";
+				const rescueIdRes = await apiBattle.postRescueId(_questType);
+				result = rescueIdRes.body.rescue_code;
+			}
 		} catch(error) {
 			debugLog("GetRescueId: " + error);
-			return;
 		}
+		return result;
 	}
 	/**
 	 * @description 建立Ranking UI,顯示場上玩家功績排名
@@ -6375,17 +6515,19 @@ function onGameApp() {
 	 * @returns {boolean} Attack可點擊回傳true,否則回傳false
 	 */
 	async function isAttackButtonReady() {
-		_battleWorld = kh.createInstance("battleWorld");
-		if (!_battleWorld) return false;
-		const battleUI = _battleWorld?.battleUI;
-		if (!battleUI) return false;
-		const centerPanel = _battleWorld.battleUI.CenterPanel;
-		if (!centerPanel) return false;
-		if (centerPanel._visibleButton !== centerPanel.BUTTONS.ATTACK) return false;
-		const btnAttack = battleUI.AttackButton?._widget;
-		if (!btnAttack) return false;
-		if (!btnAttack.isVisible()) return false;
-		return btnAttack.isEnabled();
+		try {
+			_battleWorld = kh.createInstance("battleWorld");
+			const battleUI = _battleWorld.battleUI;
+			const centerPanel = battleUI.CenterPanel;
+			const btnAttack = battleUI.AttackButton._widget;
+			return (
+				centerPanel._visibleButton === centerPanel.BUTTONS.ATTACK &&
+				btnAttack.isVisible() &&
+				btnAttack.isEnabled()
+			);
+		} catch (error) {
+			return false;
+		}
 	}
 	/**
 	 * @description 等待Attack按鈕啟用
@@ -6782,7 +6924,7 @@ function onGameApp() {
 					case "weapon_break"://兵仗
 						await simulateTouch(currentScene.seekWidgetByName("btn_back_top"));
 						break;
-					case "epic":
+					case "epic"://
 						if (await launchRaidBattleAgain()) return;
 						await simulateTouchByPath("Scene(C)/contentLayer/Scene/window_gray/btn_retry");
 						break;
