@@ -1993,7 +1993,7 @@ function onGameApp() {
 	async function initNetworkHooks() {
 		try {
 			//等待kh建立完成
-			if (!kh || !kh.Monitor || !kh.PopupFactoryComApRestart) {
+			if (!kh || !kh.Monitor || !kh.HttpConnection) {
 				setTimeout(initNetworkHooks, 500);
 				return;
 			}
@@ -2083,20 +2083,6 @@ function onGameApp() {
 			kh.HttpConnection._openRetryMessagePopup = function (argsData, error) {
 				this._retryAfterMinWait(argsData, error, 500);
 			}
-			//跳出繼續戰鬥的視窗時,點擊回復戰鬥
-			const originalOnPopupOpened = kh.PopupFactoryComApRestart.prototype.onPopupOpened;
-			kh.PopupFactoryComApRestart.prototype.onPopupOpenedRaw = kh.PopupFactoryComApRestart.prototype.onPopupOpened;
-			kh.PopupFactoryComApRestart.prototype.onPopupOpened = function (popup, ...args) {
-				const result = originalOnPopupOpened.call(this, popup, ...args);
-				setTimeout(() => {
-					const restartBtn = popup.seekWidgetByName('btn_restart');
-					if (restartBtn) {
-						restartBtn._pushDownEvent();
-						restartBtn._releaseUpEvent();
-					}
-				}, 0);
-				return result;
-			};
 			//動畫加速
 			kh.PlayerGameConfig.prototype.BATTLE_SPEED_SETTINGS.quick = _animationSpeedFactor;
 			debugLog('Animation Speed: ' + _animationSpeedFactor);
@@ -2118,10 +2104,139 @@ function onGameApp() {
 			debugLog('Animation Delay: ' + _animationDelay);
 			//獲取遊戲語言
 			getGameLanguage();
+			//彈窗攔截
+			await hookAllPopups();
+			//繼續設定
 			setTimeout(initGameEngine, 0);
 			debugLog('initialization Part2 starting...');
 		} catch(error) {
 			debugLog("initNetworkHooks: " + error);
+		}
+	}
+	/**
+	 * @description 批量攔截遊戲彈窗事件，並印出對應的說明
+	 */
+	async function hookAllPopups() {
+		try {
+			//只監聽,尚未使用的部分
+			const popupConfig = [
+				{classRef: kh.PopupFactory, name: "PopupFactory", desc: "彈窗"},
+				{classRef: kh.PopupFactoryAbilityAcquired, name: "PopupFactoryAbilityAcquired", desc: "獲得技能"},
+				{classRef: kh.PopupFactoryAQ002Brief, name: "PopupFactoryAQ002Brief", desc: "任務/活動簡介"},
+				{classRef: kh.PopupFactoryAQ002Log, name: "PopupFactoryAQ002Log", desc: "任務/任務日誌"},
+				{classRef: kh.PopupFactoryBlack, name: "PopupFactoryBlack", desc: "黑彈窗"},
+				{classRef: kh.PopupFactoryBlackBlue, name: "PopupFactoryBlackBlue", desc: "黑藍彈窗"},
+				{classRef: kh.PopupFactoryBlackRed, name: "PopupFactoryBlackRed", desc: "黑紅彈窗"},
+				{classRef: kh.PopupFactoryBlue, name: "PopupFactoryBlue", desc: "藍彈窗"},
+				{classRef: kh.PopupFactoryBuyResult, name: "PopupFactoryBuyResult", desc: "購買結果"},
+				{classRef: kh.PopupFactoryCannotUseAccessory, name: "PopupFactoryCannotUseAccessory", desc: "無法使用飾品"},
+				{classRef: kh.PopupFactoryCharacterAbilityAcquired, name: "PopupFactoryCharacterAbilityAcquired", desc: "角色技能獲得"},
+				{classRef: kh.PopupFactoryCharacterAbilityImproved, name: "PopupFactoryCharacterAbilityImproved", desc: "角色技能提升"},
+				{classRef: kh.PopupFactoryCharacterAcquired, name: "PopupFactoryCharacterAcquired", desc: "獲得新角色"},
+				{classRef: kh.PopupFactoryComAgeLimitB, name: "PopupFactoryComAgeLimitB", desc: "年齡限制提示"},
+				{classRef: kh.PopupFactoryComBackCheck, name: "PopupFactoryComBackCheck", desc: "返回確認"},
+				{classRef: kh.PopupFactoryComBackResult, name: "PopupFactoryComBackResult", desc: "返回結果"},
+				{classRef: kh.PopupFactoryComCharChange, name: "PopupFactoryComCharChange", desc: "角色變更確認"},
+				{classRef: kh.PopupFactoryComConfirmBonus, name: "PopupFactoryComConfirmBonus", desc: "獎勵確認"},
+				{classRef: kh.PopupFactoryComEditComment, name: "PopupFactoryComEditComment", desc: "編輯評論"},
+				{classRef: kh.PopupFactoryComEditNocom, name: "PopupFactoryComEditNocom", desc: "編輯(無評論)"},
+				{classRef: kh.PopupFactoryComGreeting, name: "PopupFactoryComGreeting", desc: "留言板招呼"},
+				{classRef: kh.PopupFactoryComLeaderChange, name: "PopupFactoryComLeaderChange", desc: "公會長變更確認"},
+				{classRef: kh.PopupFactoryComLeaderChangeDone, name: "PopupFactoryComLeaderChangeDone", desc: "公會長變更完成"},
+				{classRef: kh.PopupFactoryComMemberFire, name: "PopupFactoryComMemberFire", desc: "踢出成員"},
+				{classRef: kh.PopupFactoryComNeedApBp, name: "PopupFactoryComNeedApBp", desc: "AP/BP不足_0"},
+				{classRef: kh.PopupFactoryComNeedApBp1, name: "PopupFactoryComNeedApBp1", desc: "AP/BP不足_1"},
+				{classRef: kh.PopupFactoryComNeedApBp2, name: "PopupFactoryComNeedApBp2", desc: "AP/BP不足_2"},
+				{classRef: kh.PopupFactoryComPartyAutoOrg, name: "PopupFactoryComPartyAutoOrg", desc: "隊伍自動編成"},
+				{classRef: kh.PopupFactoryComRoleChange, name: "PopupFactoryComRoleChange", desc: "位置變更"},
+				{classRef: kh.PopupFactoryComUseResult, name: "PopupFactoryComUseResult", desc: "道具使用結果"},
+				{classRef: kh.PopupFactoryComWeaponSummonAutoOrg, name: "PopupFactoryComWeaponSummonAutoOrg", desc: "武器/幻獸自動編成"},
+				{classRef: kh.PopupFactoryEpiApCheck, name: "PopupFactoryEpiApCheck", desc: "AP消耗確認"},
+				{classRef: kh.PopupFactoryEpiReplayCheck, name: "PopupFactoryEpiReplayCheck", desc: "劇情重播確認"},
+				{classRef: kh.PopupFactoryEpiSceneCheck, name: "PopupFactoryEpiSceneCheck", desc: "劇情確認"},
+				{classRef: kh.PopupFactoryEpiSceneCheckHOnly, name: "PopupFactoryEpiSceneCheckHOnly", desc: "劇情特殊確認"},
+				{classRef: kh.PopupFactoryEpiStoryCheck, name: "PopupFactoryEpiStoryCheck", desc: "劇情故事確認"},
+				{classRef: kh.PopupFactoryEvoItemChoose, name: "PopupFactoryEvoItemChoose", desc: "進化素材選擇"},
+				{classRef: kh.PopupFactoryFriendRequest, name: "PopupFactoryFriendRequest", desc: "好友申請"},
+				{classRef: kh.PopupFactoryGaCheckUseStoneTicket, name: "PopupFactoryGaCheckUseStoneTicket", desc: "確認使用俗頭/抽卡券"},
+				{classRef: kh.PopupFactoryGaTips, name: "PopupFactoryGaTips", desc: "轉蛋提示"},
+				{classRef: kh.PopupFactoryGud000Attention, name: "PopupFactoryGud000Attention", desc: "公會注意事項"},
+				{classRef: kh.PopupFactoryGud000Forbidden, name: "PopupFactoryGud000Forbidden", desc: "公會禁止事項"},
+				{classRef: kh.PopupFactoryGud001Break, name: "PopupFactoryGud001Break", desc: "公會解散"},
+				{classRef: kh.PopupFactoryGud001BurstTimeChange, name: "PopupFactoryGud001BurstTimeChange", desc: "公會 Burst Time 變更"},
+				{classRef: kh.PopupFactoryGud001BurstTimeResult, name: "PopupFactoryGud001BurstTimeResult", desc: "公會 Burst Time 設定結果"},
+				{classRef: kh.PopupFactoryGud001Control, name: "PopupFactoryGud001Control", desc: "公會管理介面"},
+				{classRef: kh.PopupFactoryGud001Edit, name: "PopupFactoryGud001Edit", desc: "公會編輯"},
+				{classRef: kh.PopupFactoryGud001Leave, name: "PopupFactoryGud001Leave", desc: "離開公會"},
+				{classRef: kh.PopupFactoryGud001Uncontrol, name: "PopupFactoryGud001Uncontrol", desc: "公會取消管理"},
+				{classRef: kh.PopupFactoryGud001UncontrolBurstTime, name: "PopupFactoryGud001UncontrolBurstTime", desc: "公會取消 Burst Time"},
+				{classRef: kh.PopupFactoryGud002Detail, name: "PopupFactoryGud002Detail", desc: "公會詳細資訊"},
+				{classRef: kh.PopupFactoryGudChangeResult, name: "PopupFactoryGudChangeResult", desc: "公會變更結果"},
+				{classRef: kh.PopupFactoryGudGemAmount, name: "PopupFactoryGudGemAmount", desc: "公會寶石數量"},
+				{classRef: kh.PopupFactoryGudGemCheck, name: "PopupFactoryGudGemCheck", desc: "公會寶石確認"},
+				{classRef: kh.PopupFactoryGudGemRankup, name: "PopupFactoryGudGemRankup", desc: "公會寶石設施升級"},
+				{classRef: kh.PopupFactoryGudGemResult, name: "PopupFactoryGudGemResult", desc: "公會寶石結果"},
+				{classRef: kh.PopupFactoryGudGuardianBuy, name: "PopupFactoryGudGuardianBuy", desc: "公會購買守護神"},
+				{classRef: kh.PopupFactoryGudGuardianChange, name: "PopupFactoryGudGuardianChange", desc: "公會更換守護神"},
+				{classRef: kh.PopupFactoryGudGuardianDetail, name: "PopupFactoryGudGuardianDetail", desc: "公會守護神資訊"},
+				{classRef: kh.PopupFactoryGudGuardianDetailB, name: "PopupFactoryGudGuardianDetailB", desc: "公會守護神資訊B"},
+				{classRef: kh.PopupFactoryGudGuardianNomoney, name: "PopupFactoryGudGuardianNomoney", desc: "資金不足(守護神)"},
+				{classRef: kh.PopupFactoryGudGuardianResult, name: "PopupFactoryGudGuardianResult", desc: "守護神設定結果"},
+				{classRef: kh.PopupFactoryGudMyStatus, name: "PopupFactoryGudMyStatus", desc: "公會個人狀態"},
+				{classRef: kh.PopupFactoryGudNameCha, name: "PopupFactoryGudNameCha", desc: "公會名稱變更"},
+				{classRef: kh.PopupFactoryGudNameEnd, name: "PopupFactoryGudNameEnd", desc: "公會名稱變更結束"},
+				{classRef: kh.PopupFactoryGudRequestDelete, name: "PopupFactoryGudRequestDelete", desc: "公會刪除請求"},
+				{classRef: kh.PopupFactoryGudRequestEnd, name: "PopupFactoryGudRequestEnd", desc: "公會請求結束"},
+				{classRef: kh.PopupFactoryIllustUp, name: "PopupFactoryIllustUp", desc: "插圖放大"},
+				{classRef: kh.PopupFactoryJobAbilityAcquired, name: "PopupFactoryJobAbilityAcquired", desc: "英靈技能獲得"},
+				{classRef: kh.PopupFactoryJobMaxBonus, name: "PopupFactoryJobMaxBonus", desc: "英靈滿等獎勵"},
+				{classRef: kh.PopupFactoryLockWaitTimeout, name: "PopupFactoryLockWaitTimeout", desc: "鎖定等待超時"},
+				{classRef: kh.PopupFactoryMenu, name: "PopupFactoryMenu", desc: "主選單"},
+				{classRef: kh.PopupFactoryMenuList, name: "PopupFactoryMenuList", desc: "選單列表"},
+				{classRef: kh.PopupFactoryNeedStone, name: "PopupFactoryNeedStone", desc: "需要俗頭"},
+				{classRef: kh.PopupFactoryNewItemAcquired, name: "PopupFactoryNewItemAcquired", desc: "獲得新道具"},
+				{classRef: kh.PopupFactoryNineArmsCaution, name: "PopupFactoryNineArmsCaution", desc: "特殊武器警告"},
+				{classRef: kh.PopupFactoryNineArmsMakeCheck2, name: "PopupFactoryNineArmsMakeCheck2", desc: "特殊武器製作確認"},
+				{classRef: kh.PopupFactoryPopupCommon, name: "PopupFactoryPopupCommon", desc: "通用彈窗"},
+				{classRef: kh.PopupFactoryQuestClearBonusItemsAcquired, name: "PopupFactoryQuestClearBonusItemsAcquired", desc: "通關道具獲得"},
+				{classRef: kh.PopupFactoryRaQuestAppearance, name: "PopupFactoryRaQuestAppearance", desc: "降臨戰出現"},
+				{classRef: kh.PopupFactoryStoneCheck, name: "PopupFactoryStoneCheck", desc: "俗頭確認"},
+				{classRef: kh.PopupFactoryTextOnly, name: "PopupFactoryTextOnly", desc: "文字彈窗"},
+				{classRef: kh.PopupFactoryTextOnlyVariableSize, name: "PopupFactoryTextOnlyVariableSize", desc: "文字彈窗2"}
+			];
+			for (const config of popupConfig) {
+				const targetClass = config.classRef;
+				const className = config.name;
+				const description = config.desc;
+				targetClass.prototype.onPopupOpenedRaw = targetClass.prototype.onPopupOpened;
+				targetClass.prototype.onPopupOpened = function (popup, ...args) {
+					const result = this.onPopupOpenedRaw.call(this, popup, ...args);
+					debugLog(`${className}.onPopupOpened ${description}`);
+					return result;
+				};
+				targetClass.prototype.onEnterRaw = targetClass.prototype.onEnter;
+				targetClass.prototype.onEnter = function (...args) {
+					const result = this.onEnterRaw.call(this, ...args);
+					debugLog(`${className}.onEnter ${description}`);
+					return result;
+				};
+			}
+			//自動返回戰鬥
+			kh.PopupFactoryComApRestart.prototype.onPopupOpenedRaw = kh.PopupFactoryComApRestart.prototype.onPopupOpened;
+			kh.PopupFactoryComApRestart.prototype.onPopupOpened = function (popup, ...args) {
+				const result = this.onPopupOpenedRaw.call(this, popup, ...args);
+				setTimeout(() => {simulateTouch(popup.seekWidgetByName('btn_restart'));}, 0);
+				return result;
+			};
+			//結算MVP自動略過
+			kh.PopupFactoryMvp.prototype.onPopupOpenedRaw = kh.PopupFactoryMvp.prototype.onPopupOpened;
+			kh.PopupFactoryMvp.prototype.onPopupOpened = function (popup, ...args) {
+				const result = this.onPopupOpenedRaw.call(this, popup, ...args);
+				setTimeout(() => {simulateTouch(popup.seekWidgetByName('blue_btn'));}, 0);
+				return result;
+			};
+		} catch(error) {
+			debugLog("hookAllPopups: " + error);
 		}
 	}
 	/**
@@ -2635,7 +2750,7 @@ function onGameApp() {
 			if (a.name === 'ctor') return -1;
 			if (b.name === 'ctor') return 1;
 			if (a.name === 'init') return -1;
-			if (a.name === 'init') return -1;
+			if (b.name === 'init') return 1;
 			return a.name.localeCompare(b.name);
 		});
 		//格式化文字排版
@@ -2646,7 +2761,12 @@ function onGameApp() {
 		logMsg += `\n${objName}.function\n`;
 		if (methods.length > 0) {
 				logMsg += methods.map(m => {
-					return `${m.code}\n`;
+					if (m.code.includes("function Class()")) {
+						const updatedCode = m.code.replace("function Class()", `class ${m.name}()`);
+						return `${updatedCode}\n`;
+					} else {
+						return `${m.code}\n`;
+					}
 				}).join("\n");
 		}
 		debugLog(logMsg);
@@ -2818,8 +2938,6 @@ function onGameApp() {
 			// }
 			//debugLog(JSON.stringify(detailRes.body, null, 2));
 
-			//exportAllWeaponData();
-			//debugLog(JSON.stringify(res.body, null, 2));
 		} catch (error) {
 			debugLog("executeDeveloperTests: " + error);
 			debugLog(JSON.stringify(error, null, 2));
@@ -6710,6 +6828,40 @@ function onGameApp() {
 		}
 	}
 	/**
+	 * @description 智慧技能施放
+	 */
+	async function smartBattle() {
+		try {
+			//施放排序：召喚 -> 綠 -> 黃 -> 藍 -> 優先紅 -> 紅 -> 減CT技 -> 爆裂選擇 -> 檢血吃藥 -> 攻擊
+			//貝多芬模式,依據現在旋律改變排序
+
+			//幻獸檢查
+
+			//取得場上可用技能排序
+			//const characterList = _battleWorld.characterList;
+			//const abilityList = _battleWorld.characterAbilityList;
+			//for (let i = 0; i < characterList.length; i++) {
+			//	characterList[i].isJob 是否為英靈
+			//	characterList[i].id 英靈或神姬的ID
+			//	const skills = abilityList[i];
+			// 	for (let j = 0; j < skills.length; j++) {
+			// 		skills[j].getAbilityData().color 技能顏色
+			// 		skills[j].getAbilityData().ready 可用
+			// 		skills[j].getAbilityData().party_member_selectable 指定對象
+			// 	}
+			//}
+
+			//爆裂選項
+
+			//HP檢查
+
+			//攻擊
+
+		} catch(error) {
+			debugLog("smartBattle: " + error);
+		}
+	}
+	/**
 	 * @description 檢查隊伍是否已經全滅
 	 * @returns {Boolean} 若全滅回傳 true，否則回傳 false
 	 */
@@ -6840,25 +6992,16 @@ function onGameApp() {
 	async function onQuestResult() {
 		try {
 			if (!await robotRun("onQuestResult")) return;
+			//MVP彈窗已被攔截
+			//好友申請自動取消
+			await simulateTouchByPath("Scene(C)/popupLayer/default/default/default/Layer/popup_base/btn_cancel");
 			//自動連續挑戰有開啟
 			if (_autoRetryEnabled) {
 				const currentScene = cc.director.getRunningScene();
 				let currentSceneName1 = currentScene.sceneName;
 				if (typeof currentSceneName1 === "undefined") return;
 				if (currentSceneName1 !== "q_result") return;
-				//Touch [OK]
-				let btn_blue = currentScene.seekWidgetByName("blue_btn");
-				if (btn_blue) {
-					let btn_blue_text = "";
-					if (typeof btn_blue.getTitleText === 'function') {
-						btn_blue_text = btn_blue.getTitleText();
-					} else if (typeof btn_blue.getString === 'function') {
-						btn_blue_text = btn_blue.getString();
-					}
-					if (btn_blue_text) {
-						await simulateTouch(btn_blue);
-					}
-				}
+
 				switch (_questType) {
 					case "raid"://合作副本
 						//Touch [返回]
