@@ -1695,7 +1695,7 @@ function onGameApp() {
 	let _battlePartyId = 0;//進場時使用隊伍
 	let _playerActionTime = 0;//暫存動作時間,防技能卡住
 	let _rankingTimestamp = 0;//暫存更新名單的時間
-	let _raidPointsDelayOk = false;//是否已關閉功績顯示造成的延遲
+	let _raidPointsDelayOk = false;//是否已關閉功績顯示
 	const _minimumDamage = 1000000;//戰鬥紀錄可顯示的最小傷害
 
 	//daily robot資料區
@@ -2002,7 +2002,6 @@ function onGameApp() {
 			//初始化 HTTP 連接
 			if (!_httpClient) {_httpClient = kh.createInstance("HttpConnection");}
 			//攔截所有發往遊戲伺服器的 GET 請求
-			//const originalKhGet = kh.HttpConnection.prototype.get;
 			kh.HttpConnection.prototype.getRaw = kh.HttpConnection.prototype.get;
 			kh.HttpConnection.prototype.get = function (requestData, reqType = "normal") {
 				_postQueue.push(JSON.stringify( {...requestData, method: 'get'}));//加入佇列
@@ -2016,7 +2015,6 @@ function onGameApp() {
 				}.bind(this), requestData, reqType);
 			};
 			//網路傳輸攔截
-			//const originalKhPost = kh.HttpConnection.prototype.post;
 			//攔截所有發往遊戲伺服器的 POST 請求
 			kh.HttpConnection.prototype.postRaw = kh.HttpConnection.prototype.post;
 			kh.HttpConnection.prototype.post = function (requestData, reqType = "normal") {
@@ -2039,7 +2037,6 @@ function onGameApp() {
 				}.bind(this), requestData, reqType);
 			};
 			//攔截所有發往遊戲伺服器的 PUT 請求
-			//const originalKhPut = kh.HttpConnection.prototype.put;
 			kh.HttpConnection.prototype.putRaw = kh.HttpConnection.prototype.put;
 			kh.HttpConnection.prototype.put = function (requestData, reqType = "normal") {
 				_postQueue.push(JSON.stringify({...requestData, method: 'put'}));//加入佇列
@@ -2268,6 +2265,7 @@ function onGameApp() {
 				//攔截 Cocos2d 的 textureCache
 				if (cc.textureCache && cc.textureCache.addImage) {
 					const originalAddImage = cc.textureCache.addImage;
+					cc.textureCache.addImageRaw = cc.textureCache.addImage;
 					cc.textureCache.addImage = function (url, cb, target) {
 						if (url && typeof url === 'string') {_interceptedImageUrls.add(url);}
 						return originalAddImage.call(this, url, cb, target);
@@ -2276,6 +2274,7 @@ function onGameApp() {
 				//攔截 Cocos2d 的 loader
 				if (cc.loader && cc.loader.loadImg) {
 					const originalLoadImg = cc.loader.loadImg;
+					cc.loader.loadImgRaw = cc.loader.loadImg;
 					cc.loader.loadImg = function (url, option, cb) {
 						if (url && typeof url === 'string') {_interceptedImageUrls.add(url);}
 						return originalLoadImg.apply(this, arguments);
@@ -2362,6 +2361,7 @@ function onGameApp() {
 			const enemyStatusBarProto = kh.EnemyStatusBar.prototype;
 			//初始化紀錄
 			const originalMethodInitBase = enemyStatusBarProto._initBase;
+			enemyStatusBarProto._initBaseRaw = enemyStatusBarProto._initBase;
 			enemyStatusBarProto._initBase = function(statusData, param2, param3) {
 				originalMethodInitBase.call(this, statusData, param2, param3);//先讓跑完預設邏輯
 				this._cachedMaxHp = statusData.hpmax;//備份最大血量，供後續使用
@@ -2375,6 +2375,7 @@ function onGameApp() {
 			};
 			//戰鬥中血量變動
 			const originalMethodAdjustHp = enemyStatusBarProto.adjustHP;
+			enemyStatusBarProto.adjustHPRaw = enemyStatusBarProto.adjustHP;
 			enemyStatusBarProto.adjustHP = function(currentHp, isDamage) {
 				originalMethodAdjustHp.call(this, currentHp, isDamage);
 				const maxHp = this._cachedMaxHp || this.hpmax;//如果沒有快取最大血量，嘗試從屬性中尋找備用值
@@ -2392,6 +2393,7 @@ function onGameApp() {
 			};
 			//初始化怒氣條
 			const originalMethodInitModeGauge = enemyStatusBarProto._initModeGauge;
+			enemyStatusBarProto._initModeGaugeRaw = enemyStatusBarProto._initModeGauge;
 			enemyStatusBarProto._initModeGauge = function(statusData) {
 				originalMethodInitModeGauge.call(this, statusData);
 				if (statusData.has_mode_gauge && this._modeGauge && this._modeGauge.parent) {
@@ -2406,6 +2408,7 @@ function onGameApp() {
 			};
 			//戰鬥中怒氣變動
 			const originalMethodAdjustModeGauge = enemyStatusBarProto.adjustModeGauge;
+			enemyStatusBarProto.adjustModeGaugeRaw = enemyStatusBarProto.adjustModeGauge;
 			enemyStatusBarProto.adjustModeGauge = function(percentVal) {
 				originalMethodAdjustModeGauge.call(this, percentVal);
 				if (this._modeGauge && this._modeGauge.parent) {
@@ -2903,6 +2906,7 @@ function onGameApp() {
 			//await exportAllSummonData() ;
 			//await exportAllSoulData();
 			//await exportAllWeaponData();
+			//await smartAttack();
 
 			const rescueId = await battleGetRescueId();//救援碼
 			if (rescueId) {
@@ -5358,9 +5362,10 @@ function onGameApp() {
 	}
 	/**
 	 * @description 將輸入文字轉為檔案下載到本地
+	 * @param {String} title - 下載的檔案標題名稱
 	 * @param {String} source - 要轉為檔案下載的文字內容
 	 */
-	function exportToJsonFile(source) {
+	function exportToJsonFile(title, source) {
 		try {
 			const blob = new Blob([source], { type: "application/json;charset=utf-8;" });
 			//產生一個暫時性下載網址
@@ -5370,7 +5375,7 @@ function onGameApp() {
 			//下載的檔案名稱
 			const now = new Date();
 			const dateStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
-			downloadLink.download = `hime_data_${dateStr}.json`;
+			downloadLink.download = `${title}_${dateStr}.json`;
 			//塞入網頁的body
 			downloadLink.style.display = "none";
 			document.body.appendChild(downloadLink);
@@ -5441,7 +5446,12 @@ function onGameApp() {
 				debugLog("No Hime");
 				return;
 			}
-			exportToJsonFile(JSON.stringify(himeList));
+			switch (_language) {
+				case 0:exportToJsonFile("MyHimeJP", JSON.stringify(himeList, null, 2));break;
+				case 1:exportToJsonFile("MyHimeCHT", JSON.stringify(himeList, null, 2));break;
+				case 2:exportToJsonFile("MyHimeEN", JSON.stringify(himeList, null, 2));break;
+				default:exportToJsonFile("MyHime", JSON.stringify(himeList, null, 2));break;
+			}
 		} catch (error) {
 			debugLog("exportOwnedHimeData: " + error);
 		}
@@ -5489,7 +5499,12 @@ function onGameApp() {
 				return;
 			}
 			debugLog("hime count: " + himeList.length);
-			exportToJsonFile(JSON.stringify(himeList, null, 2));
+			switch (_language) {
+				case 0:exportToJsonFile("HimeDataJP", JSON.stringify(himeList, null, 2));break;
+				case 1:exportToJsonFile("HimeDataCHT", JSON.stringify(himeList, null, 2));break;
+				case 2:exportToJsonFile("HimeDataEN", JSON.stringify(himeList, null, 2));break;
+				default:exportToJsonFile("HimeData", JSON.stringify(himeList, null, 2));break;
+			}
 		} catch (error) {
 			debugLog("exportAllHimeData: " + error);
 		}
@@ -5648,7 +5663,12 @@ function onGameApp() {
 				return;
 			}
 			debugLog("weapons count: " + weaponList.length);
-			exportToJsonFile(JSON.stringify(weaponList, null, 2));
+			switch (_language) {
+				case 0:exportToJsonFile("WeaponDataJP", JSON.stringify(weaponList, null, 2));break;
+				case 1:exportToJsonFile("WeaponDataCHT", JSON.stringify(weaponList, null, 2));break;
+				case 2:exportToJsonFile("WeaponDataEN", JSON.stringify(weaponList, null, 2));break;
+				default:exportToJsonFile("WeaponData", JSON.stringify(weaponList, null, 2));break;
+			}
 		} catch(error) {
 			debugLog("exportAllWeaponData: " + error);
 		}
@@ -5821,7 +5841,13 @@ function onGameApp() {
 				return;
 			}
 			debugLog("summon count: " + summonList.length);
-			exportToJsonFile(JSON.stringify(summonList, null, 2));
+			switch (_language) {
+				case 0:exportToJsonFile("SummonDataJP", JSON.stringify(summonList, null, 2));break;
+				case 1:exportToJsonFile("SummonDataCHT", JSON.stringify(summonList, null, 2));break;
+				case 2:exportToJsonFile("SummonDataEN", JSON.stringify(summonList, null, 2));break;
+				default:exportToJsonFile("SummonData", JSON.stringify(summonList, null, 2));break;
+			}
+
 		} catch(error) {
 			debugLog("exportAllSummonData: " + error);
 		}
@@ -5892,7 +5918,7 @@ function onGameApp() {
 	async function exportAllSoulData() {
 		try {
 			const jobIds = [];
-			for (let i = 1; i < 50; i++) {jobIds.push(i);}
+			for (let i = 1; i < 70; i++) {jobIds.push(i);}
 			const jobMap = {};
 			for (let i = 0; i < jobIds.length; i++) {
 				await sleep(50);
@@ -5925,7 +5951,12 @@ function onGameApp() {
 				return;
 			}
 			debugLog("job count: " + jobList.length);
-			exportToJsonFile(JSON.stringify(jobList, null, 2));
+			switch (_language) {
+				case 0:exportToJsonFile("SoulDataJP", JSON.stringify(jobList, null, 2));break;
+				case 1:exportToJsonFile("SoulDataCHT", JSON.stringify(jobList, null, 2));break;
+				case 2:exportToJsonFile("SoulDataEN", JSON.stringify(jobList, null, 2));break;
+				default:exportToJsonFile("SoulData", JSON.stringify(jobList, null, 2));break;
+			}
 		} catch(error) {
 			debugLog("exportAllSoulData: " + error);
 		}
@@ -6563,7 +6594,6 @@ function onGameApp() {
 					}
 				}
 			}
-			//debugLog("Element: " + _enemyElement + ", level: " + _enemyLevel);
 		} catch(error) {
 			debugLog("battleUpdateData: " + error);
 		}
@@ -6609,8 +6639,6 @@ function onGameApp() {
 	async function battleAutoSummon() {
 		try {
 			if (_battleWorld.battleUI.SummonButton && _battleWorld.battleUI.SummonButton._widget && _battleWorld.battleUI.SummonButton._widget.isEnabled()) {
-				//開啟幻獸面板
-				//_battleWorld.battleUI.SummonButton.onPushTouchPanel(_battleWorld.battleUI.SummonButton._widget, 2);
 				if (_battleWorld.battleUI.SummonPanelGroup) {
 					const panelList = _battleWorld.battleUI.SummonPanelGroup.panelList;
 					//應該要依元素或功能排序後發動, 但是還沒寫
@@ -6828,34 +6856,207 @@ function onGameApp() {
 		}
 	}
 	/**
-	 * @description 智慧技能施放
+	 * @description 自訂技能施放, 幻獸->黃->綠->藍->優先紅->紅->減CT技->爆裂選擇->檢血吃藥->攻擊
 	 */
-	async function smartBattle() {
+	async function customAbilityActivation() {
 		try {
-			//施放排序：召喚 -> 綠 -> 黃 -> 藍 -> 優先紅 -> 紅 -> 減CT技 -> 爆裂選擇 -> 檢血吃藥 -> 攻擊
-			//貝多芬模式,依據現在旋律改變排序
+			//檢查可用幻獸
+			const battleWorld = kh.createInstance("battleWorld");
+			const summonList = battleWorld?.battleUI?.SummonPanelGroup?.panelList;
+			if (summonList) {
+				for (const summon of summonList) {
+					if (summon.isUsable()) {
+						battleWorld.summonAttack(summon.index);
+						return;
+					}
+				}
+			}
+			//取得場上可用技能
+			const characterList = battleWorld.characterList;
+			const abilityList = battleWorld.characterAbilityList;
+			const abilityArray = [];
+			for (let i = 0; i < characterList.length; i++) {
+				const character = characterList[i];
+				const skills = abilityList[i];
+				for (const skill of skills) {
+					if (!skill._abilityData.ready) continue;
+					let thePriority = 99;
+					//一般準則
+					switch (skill._abilityData.color) {
+						case "yellow":thePriority=20;break;
+						case "green":thePriority=24;break;
+						case "blue":thePriority=28;break;
+						case "red":thePriority=32;break;
+					}
+					//特殊規則
+					if (character.isJob) {
+						if (character.id === 34) {
+							//愛迪生
+							switch (skill._index) {
+							case 1:thePriority=10;break;
+							case 2:thePriority=12;break;
+							case 3:thePriority=40;break;
+							case 4:thePriority=14;break;
+							}
+						}
+						if (character.id === 50) {
+							//貝多芬
+							switch (skill._index) {
+							case 1:thePriority=10;break;
+							case 2:thePriority=42;break;
+							case 3:thePriority=43;break;
+							}
+						}
+					} else {
+						//優先紅30, 減CT技(個人)36, 減CT技(全部)40, 不使用99
+						switch (character.id) {
+							case 5167://[戦友想う刃]ルー
+								if (skill._index === 1) thePriority = 31;
+								break;
+							case 5230://[決意の護衛者]ラー
+								if (skill._index === 3) thePriority = 36;
+								break;
+							case 5243://[聖夜の約束]フレイヤ
+								if (skill._index === 4) thePriority = 19;
+								break;
+							case 5248://[百花繚乱の領袖]バアル
+								if (skill._index === 3) thePriority = 36;
+								break;
+							case 5249://[夢見る怠惰]アマナー
+								if (skill._index === 4) thePriority = 36;
+								break;
+							case 5277://[極光の聖戦士]アテン
+								if (skill._index === 2) thePriority = 30;
+								break;
+							case 5300://[贈愛の爛漫]シャイターン
+								if (skill._index === 3) thePriority = 40;
+								break;
+							case 5311://[仔猫奮迅]キャスパリーグ
+								if (skill._index === 3) thePriority = 36;
+								break;
+							case 5327://呂布
+								if (skill._index === 3) thePriority = 36;
+								break;
+							case 5351://[愛怨の魔女]ヘーラー
+								if (skill._index === 1) thePriority = 36;
+								break;
+							case 5355://[夢贈る堕天使]ベレヌス
+								switch (skill._index) {
+									case 1: thePriority = 30; break;
+									case 2: thePriority = 31; break;
+								}
+								break;
+							case 5373://[神代の始祖]イヴ
+								switch (skill._index) {
+									case 1: thePriority = 30; break;
+									case 2: thePriority = 31; break;
+								}
+								break;
+							case 5389://[或る夏の一幕]ファレグ
+								if (skill._index === 3) thePriority = 40;
+								break;
+							case 5392://玉泉日和子
+								if (skill._index === 1) thePriority = 36;
+								break;
+							case 5397://[蒼雷の庇護者]ステュクス
+								if (skill._index === 4) thePriority = 36;
+								break;
+							case 5401://[喫茶浪漫]アマナー
+								if (skill._index === 4) thePriority = 36;
+								break;
+							case 5417://[惑溺のふわもふ]モイラ
+								if (skill._index === 4) thePriority = 36;
+								break;
+							case 5424://[麗衣の代理人]アモン
+								switch (skill._index) {
+									case 1: thePriority = 30; break;
+									case 2: thePriority = 30; break;
+									case 3: thePriority = 36; break;
+									case 4: thePriority = 37; break;
+								}
+								break;
+							case 5426://[輝炎の剣]オク
+								if (skill._index === 4) thePriority = 36;
+								break;
+							case 5427://[月華の舞巫女]アリサ
+								if (skill._index === 4) thePriority = 36;
+								break;
+							case 5435://アルテミス[反心想]
+								if (skill._index === 3) thePriority = 40;
+								break;
+							case 5441://[深潜の麗女]アデーレ
+								switch (skill._index) {
+									case 1: thePriority = 30; break;
+									case 2: thePriority = 30; break;
+								}
+								break;
+							case 5444://[波戯の愛霹]シャイターン
+								if (skill._index === 1) thePriority = 36;
+								break;
+							case 5454://[神威明星]ルシファー
+								switch (skill._index) {
+									case 1: thePriority = 30; break;
+									case 4: thePriority = 40; break;
+								}
+								break;
+							case 5459://[省察の先に]茨木童子
+								if (skill._index === 4) thePriority = 36;
+								break;
+							case 5471://[正月福娘]フィア
+								if (skill._index === 1) thePriority = 30;
+								break;
+							case 5472://[砂漠の湯あみ]ジェフティ
+								if (skill._index === 1) thePriority = 30;
+								break;
+							case 5486://[HELIX]テトラ
+								if (skill._index === 1) thePriority = 30;
+								break;
+							case 9004://バアル[神想真化]
+								switch (skill._index) {
+									case 3: thePriority = 35; break;
+									case 4: thePriority = 36; break;
+								}
+								break;
+							case 9006://アモン[神想真化]
+								switch (skill._index) {
+									case 1: thePriority = 30; break;
+									case 4: thePriority = 40; break;
+								}
+								break;
+							case 9014: // ハデス[神想真化]
+								if (skill._index === 1) thePriority = 30;
+								break;
+						}
+					}
+					if (thePriority === 99) continue;
+					abilityArray.push({
+						character_index: i,//角色索引
+						isJob: character.isJob,//是否為英靈
+						id: character.id,//英靈或神姬ID
+						ability_index: skill._index,//技能索引(從1開始)
+						color: skill._abilityData.color,//技能顏色
+						selectable: skill._abilityData.party_member_selectable,//需要指定成員
+						priority: thePriority//優先級別
+					});
+				}
+			}
+			//技能排序
+			if (abilityArray.length > 0) {
+				abilityArray.sort((a, b) => a.priority - b.priority);
+				const abilityItem = abilityArray[0];//取出第一個
+				const character = characterList[abilityItem.character_index];
+				if (abilityItem.selectable) {
+					battleWorld.useAbility(character, abilityItem.ability_index, characterList[0]);
+				} else {
+					battleWorld.useAbility(character, abilityItem.ability_index);
+				}
+				return;
+			}
+			//爆裂選項,Full Burst才開啟?
 
-			//幻獸檢查
+			//HP檢查, 小於60%時檢查有無大小藥水
 
-			//取得場上可用技能排序
-			//const characterList = _battleWorld.characterList;
-			//const abilityList = _battleWorld.characterAbilityList;
-			//for (let i = 0; i < characterList.length; i++) {
-			//	characterList[i].isJob 是否為英靈
-			//	characterList[i].id 英靈或神姬的ID
-			//	const skills = abilityList[i];
-			// 	for (let j = 0; j < skills.length; j++) {
-			// 		skills[j].getAbilityData().color 技能顏色
-			// 		skills[j].getAbilityData().ready 可用
-			// 		skills[j].getAbilityData().party_member_selectable 指定對象
-			// 	}
-			//}
-
-			//爆裂選項
-
-			//HP檢查
-
-			//攻擊
+			//點擊攻擊按鍵
 
 		} catch(error) {
 			debugLog("smartBattle: " + error);
