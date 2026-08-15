@@ -7091,14 +7091,35 @@ function onGameApp() {
 					const character = characterList[abilityItem.character_index];
 					const abilityPos = abilityItem.ability_index;
 					let targetChara = null;
-					if (abilityItem.selectable) {
-						//取得技能指定目標
+					if (abilityItem.selectable) {//取得技能指定目標
 						const targetIndex = getPartyTarget(abilityItem.selectableType);
 						if (targetIndex === -1) continue;
 						targetChara = characterList[targetIndex];//取得目標角色
 					}
-					const bufferedInput = kh.createInstance("AbilityBufferedInput", [character, abilityPos, attackTargetPos, targetChara]);
-					await bufferedInput.execute();
+					try {//施放技能
+						const bufferedInput = kh.createInstance("AbilityBufferedInput", [character, abilityPos, attackTargetPos, targetChara]);
+						await battleWorld._useAbility(bufferedInput._character,bufferedInput._abilityPos,bufferedInput._attackTargetPos,bufferedInput._abilityTarget);
+						await sleep(100);
+					} catch(error2) {
+						if (error2.bufferedInputLength === 0) {
+							//執行錯誤,先忽略技能
+							const charIndex = abilityItem.character_index;
+							const skillIndex = abilityItem.ability_index;
+							const originalSkills = abilityList[charIndex];
+							if (originalSkills && Array.isArray(originalSkills)) {
+								const failedSkill = originalSkills.find(s => s._index === skillIndex);
+								if (failedSkill && failedSkill._abilityData) {
+									failedSkill._abilityData.ready = false;
+									debugLog(`fail: character[${charIndex}].ability[${skillIndex}]`);
+								}
+							}
+							await sleep(100);
+							continue;
+						} else {
+							debugLog("_useAbility: " + JSON.stringify(error2, null, 2));
+						}
+						await sleep(300);
+					}
 					return;
 				}
 			}
@@ -7119,7 +7140,7 @@ function onGameApp() {
 			await battleWorld.battleUI.AttackButton.simulateAttack();
 			await sleep(300);
 		} catch(error) {
-			debugLog("smartBattle: " + error);
+			debugLog("customAbilityActivation: " + error);
 		}
 	}
 	/**
