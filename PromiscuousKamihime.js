@@ -1993,7 +1993,7 @@ function onGameApp() {
 	async function initNetworkHooks() {
 		try {
 			//等待kh建立完成
-			if (!kh || !kh.Monitor || !kh.HttpConnection) {
+			if (!khutil || !kh || !kh.Monitor || !kh.HttpConnection || !kh.PlayerGameConfig || !kh.Character || !kh.Enemy) {
 				setTimeout(initNetworkHooks, 500);
 				return;
 			}
@@ -2004,8 +2004,7 @@ function onGameApp() {
 			//攔截所有發往遊戲伺服器的 GET 請求
 			kh.HttpConnection.prototype.getRaw = kh.HttpConnection.prototype.get;
 			kh.HttpConnection.prototype.get = function (requestData, reqType = "normal") {
-				_postQueue.push(JSON.stringify( {...requestData, method: 'get'}));//加入佇列
-				flushRequestQueue();//啟動解析佇列
+				_postQueue.push(JSON.stringify( {...requestData, method: 'get'}));flushRequestQueue();
 				this.errorIfNotSetSessionId();
 				return this._wrapFireEvent(function (req) {
 					req = this._normalizeId(req);
@@ -2018,8 +2017,7 @@ function onGameApp() {
 			//攔截所有發往遊戲伺服器的 POST 請求
 			kh.HttpConnection.prototype.postRaw = kh.HttpConnection.prototype.post;
 			kh.HttpConnection.prototype.post = function (requestData, reqType = "normal") {
-				_postQueue.push(JSON.stringify({...requestData, method: 'post'}));//加入佇列
-				flushRequestQueue();//啟動解析佇列
+				_postQueue.push(JSON.stringify({...requestData, method: 'post'}));flushRequestQueue();
 				this.errorIfNotSetSessionId();
 				return this._wrapFireEvent(function (req) {
 					req = this._normalizeId(req);
@@ -2039,8 +2037,7 @@ function onGameApp() {
 			//攔截所有發往遊戲伺服器的 PUT 請求
 			kh.HttpConnection.prototype.putRaw = kh.HttpConnection.prototype.put;
 			kh.HttpConnection.prototype.put = function (requestData, reqType = "normal") {
-				_postQueue.push(JSON.stringify({...requestData, method: 'put'}));//加入佇列
-				flushRequestQueue();//啟動解析佇列
+				_postQueue.push(JSON.stringify({...requestData, method: 'put'}));flushRequestQueue();
 				this.errorIfNotSetSessionId();
 				return this._wrapFireEvent(function (req) {
 					req = this._normalizeId(req);
@@ -2114,7 +2111,32 @@ function onGameApp() {
 	 * @description 批量攔截遊戲彈窗事件，並印出對應的說明
 	 */
 	async function hookAllPopups() {
+		let lastClassName = "";
 		try {
+			//自動返回戰鬥
+			if (kh.PopupFactoryComApRestart) {
+				const comApRestartOnPopupOpened = kh.PopupFactoryComApRestart.prototype.onPopupOpened;
+				kh.PopupFactoryComApRestart.prototype.onPopupOpenedRaw = kh.PopupFactoryComApRestart.prototype.onPopupOpened;
+				kh.PopupFactoryComApRestart.prototype.onPopupOpened = function (popup, ...args) {
+					const result = comApRestartOnPopupOpened.call(this, popup, ...args);
+					setTimeout(() => {simulateTouch(popup.seekWidgetByName('btn_restart'));}, 0);
+					return result;
+				};
+			} else {
+				debugLog(`no kh.PopupFactoryComApRestart`);
+			}
+			//結算MVP自動略過
+			if (kh.PopupFactoryMvp) {
+				const mvpOnPopupOpened = kh.PopupFactoryMvp.prototype.onPopupOpened;
+				kh.PopupFactoryMvp.prototype.onPopupOpenedRaw = kh.PopupFactoryMvp.prototype.onPopupOpened;
+				kh.PopupFactoryMvp.prototype.onPopupOpened = function (popup, ...args) {
+					const result = mvpOnPopupOpened.call(this, popup, ...args);
+					setTimeout(() => {simulateTouch(popup.seekWidgetByName('blue_btn'));}, 0);
+					return result;
+				};
+			} else {
+				debugLog(`no kh.PopupFactoryMvp`);
+			}
 			//只監聽,尚未使用的部分
 			const popupConfig = [
 				{classRef: kh.PopupFactory, name: "PopupFactory", desc: "彈窗"},
@@ -2126,7 +2148,6 @@ function onGameApp() {
 				{classRef: kh.PopupFactoryBlackRed, name: "PopupFactoryBlackRed", desc: "黑紅彈窗"},
 				{classRef: kh.PopupFactoryBlue, name: "PopupFactoryBlue", desc: "藍彈窗"},
 				{classRef: kh.PopupFactoryBuyResult, name: "PopupFactoryBuyResult", desc: "購買結果"},
-				{classRef: kh.PopupFactoryCannotUseAccessory, name: "PopupFactoryCannotUseAccessory", desc: "無法使用飾品"},
 				{classRef: kh.PopupFactoryCharacterAbilityAcquired, name: "PopupFactoryCharacterAbilityAcquired", desc: "角色技能獲得"},
 				{classRef: kh.PopupFactoryCharacterAbilityImproved, name: "PopupFactoryCharacterAbilityImproved", desc: "角色技能提升"},
 				{classRef: kh.PopupFactoryCharacterAcquired, name: "PopupFactoryCharacterAcquired", desc: "獲得新角色"},
@@ -2136,7 +2157,6 @@ function onGameApp() {
 				{classRef: kh.PopupFactoryComCharChange, name: "PopupFactoryComCharChange", desc: "角色變更確認"},
 				{classRef: kh.PopupFactoryComConfirmBonus, name: "PopupFactoryComConfirmBonus", desc: "獎勵確認"},
 				{classRef: kh.PopupFactoryComEditComment, name: "PopupFactoryComEditComment", desc: "編輯評論"},
-				{classRef: kh.PopupFactoryComEditNocom, name: "PopupFactoryComEditNocom", desc: "編輯(無評論)"},
 				{classRef: kh.PopupFactoryComGreeting, name: "PopupFactoryComGreeting", desc: "留言板招呼"},
 				{classRef: kh.PopupFactoryComLeaderChange, name: "PopupFactoryComLeaderChange", desc: "公會長變更確認"},
 				{classRef: kh.PopupFactoryComLeaderChangeDone, name: "PopupFactoryComLeaderChangeDone", desc: "公會長變更完成"},
@@ -2204,36 +2224,29 @@ function onGameApp() {
 			for (const config of popupConfig) {
 				const targetClass = config.classRef;
 				const className = config.name;
+				lastClassName = config.name;
 				const description = config.desc;
-				targetClass.prototype.onPopupOpenedRaw = targetClass.prototype.onPopupOpened;
-				targetClass.prototype.onPopupOpened = function (popup, ...args) {
-					const result = this.onPopupOpenedRaw.call(this, popup, ...args);
-					debugLog(`${className}.onPopupOpened ${description}`);
-					return result;
-				};
-				targetClass.prototype.onEnterRaw = targetClass.prototype.onEnter;
-				targetClass.prototype.onEnter = function (...args) {
-					const result = this.onEnterRaw.call(this, ...args);
-					debugLog(`${className}.onEnter ${description}`);
-					return result;
-				};
+				if (targetClass) {
+					const originalOnPopupOpened = targetClass.prototype.onPopupOpened;
+					targetClass.prototype.onPopupOpenedRaw = targetClass.prototype.onPopupOpened;
+					targetClass.prototype.onPopupOpened = function (popup, ...args) {
+						const result = originalOnPopupOpened.call(this, popup, ...args);
+						debugLog(`${className}.onPopupOpened ${description}`);
+						return result;
+					};
+					const originalOnEnter = targetClass.prototype.onEnter;
+					targetClass.prototype.onEnterRaw = targetClass.prototype.onEnter;
+					targetClass.prototype.onEnter = function (...args) {
+						const result = originalOnEnter.call(this, ...args);
+						debugLog(`${className}.onEnter ${description}`);
+						return result;
+					};
+				} else {
+					debugLog(`no ${className}`);
+				}
 			}
-			//自動返回戰鬥
-			kh.PopupFactoryComApRestart.prototype.onPopupOpenedRaw = kh.PopupFactoryComApRestart.prototype.onPopupOpened;
-			kh.PopupFactoryComApRestart.prototype.onPopupOpened = function (popup, ...args) {
-				const result = this.onPopupOpenedRaw.call(this, popup, ...args);
-				setTimeout(() => {simulateTouch(popup.seekWidgetByName('btn_restart'));}, 0);
-				return result;
-			};
-			//結算MVP自動略過
-			kh.PopupFactoryMvp.prototype.onPopupOpenedRaw = kh.PopupFactoryMvp.prototype.onPopupOpened;
-			kh.PopupFactoryMvp.prototype.onPopupOpened = function (popup, ...args) {
-				const result = this.onPopupOpenedRaw.call(this, popup, ...args);
-				setTimeout(() => {simulateTouch(popup.seekWidgetByName('blue_btn'));}, 0);
-				return result;
-			};
 		} catch(error) {
-			debugLog("hookAllPopups: " + error);
+			debugLog(`hookAllPopups(${lastClassName}) ${error}`);
 		}
 	}
 	/**
@@ -2304,18 +2317,11 @@ function onGameApp() {
 			//攔截開始戰鬥
 			const originalMethodStart = kh.BattleWorld.prototype._start;
         	kh.BattleWorld.prototype._startRaw = kh.BattleWorld.prototype._start;
-			kh.BattleWorld.prototype._start = async function(sceneInstanceId) {
-				const result = await originalMethodStart.apply(this, [sceneInstanceId]);
-				setTimeout(onBattleStart, 0);
-				return result;
-			}			
+			kh.BattleWorld.prototype._start = async function(sceneInstanceId) {const result = await originalMethodStart.apply(this, [sceneInstanceId]);setTimeout(onBattleStart, 0);return result;}			
 			//攔截戰鬥結束
 			const originalMethodEndBattle = kh.BattleWorld.prototype.endBattle;
 			kh.BattleWorld.prototype.endBattleRaw = kh.BattleWorld.prototype.endBattle;
-			kh.BattleWorld.prototype.endBattle = async function(isForcedRelease) {
-				setTimeout(onBattleEnd, 0);
-				return originalMethodEndBattle.call(this, isForcedRelease);
-			}
+			kh.BattleWorld.prototype.endBattle = async function(isForcedRelease) {setTimeout(onBattleEnd, 0);return originalMethodEndBattle.call(this, isForcedRelease);}
 			//攔截戰鬥回合數
 			const originalMethodSetTurnNumber = kh.Turn.prototype.setTurnNumber;
 			kh.Turn.prototype.setTurnNumberRaw = kh.Turn.prototype.setTurnNumber;
@@ -2327,22 +2333,13 @@ function onGameApp() {
 			//攔截自己的戰鬥指令,檢測自動戰鬥中卡住的情況
 			const originalMethodUseAbility = kh.BattleWorld.prototype.useAbility;
 			kh.BattleWorld.prototype.useAbilityRaw = kh.BattleWorld.prototype.useAbility;
-			kh.BattleWorld.prototype.useAbility = function(character, abilityPos, abilityTarget) {
-				_playerActionTime = new Date();
-				return originalMethodUseAbility.call(this, character, abilityPos, abilityTarget);
-			}
+			kh.BattleWorld.prototype.useAbility = function(character, abilityPos, abilityTarget) {_playerActionTime = new Date();return originalMethodUseAbility.call(this, character, abilityPos, abilityTarget);}
 			const originalMethodSummonAttack = kh.BattleWorld.prototype.summonAttack;
 			kh.BattleWorld.prototype.summonAttackRaw = kh.BattleWorld.prototype.summonAttack;
-			kh.BattleWorld.prototype.summonAttack = function(index) {
-				_playerActionTime = new Date();
-				return originalMethodSummonAttack.call(this, index);
-			}
+			kh.BattleWorld.prototype.summonAttack = function(index) {_playerActionTime = new Date();return originalMethodSummonAttack.call(this, index);}
 			const originalMethodAttack = kh.BattleWorld.prototype.attack;
-			kh.BattleWorld.prototype.attackkRaw = kh.BattleWorld.prototype.attack;
-			kh.BattleWorld.prototype.attack = function() {
-				_playerActionTime = new Date();
-				return originalMethodAttack.call(this);
-			}
+			kh.BattleWorld.prototype.attackRaw = kh.BattleWorld.prototype.attack;
+			kh.BattleWorld.prototype.attack = function() {_playerActionTime = new Date();return originalMethodAttack.call(this);}
 			//顯示Raid中自己的動作
 			const origMethodEnqueueOwnScenario = kh.RaidScenarioPlayer.prototype.enqueueOwnScenario;
 			kh.RaidScenarioPlayer.prototype.enqueueOwnScenarioRaw = kh.RaidScenarioPlayer.prototype.enqueueOwnScenario;
@@ -2726,21 +2723,27 @@ function onGameApp() {
 				} else {
 					let valSuffix = "";
 					if (typeof value === 'string') {
-						valSuffix = ` = "${value}"`;
+						valSuffix = ` = "${value};"`;
 					} else if (typeof value === 'number') {
-						valSuffix = ` = ${value}`;
+						valSuffix = ` = ${value};`;
 					} else if (typeof value === 'boolean') {
-						valSuffix = ` = ${value}`;
+						valSuffix = ` = ${value};`;
 					} else if (Array.isArray(value)) {
-						valSuffix = ` = new Array(${value.length})`;
+						valSuffix = ` = new Array(${value.length});`;
 					} else if (typeof value === 'object') {
-						// 取得物件的 Constructor 名稱（例如: "Sprite", "Node", "Object"）
-						const className = value.constructor && value.constructor.name ? value.constructor.name : "Object";
-						valSuffix = ` = null; // ${className}`;
+						if (value === null) {
+							valSuffix = ` = null;`;
+						} else if (value.className) {
+							valSuffix = ` = new ${value.className}();`;
+						} else if (value.constructor && value.constructor.name) {
+							valSuffix = ` = {};//${value.constructor.name}`;
+						} else {
+							valSuffix = ` = {};//Object`;
+						}
 					} else {
-						valSuffix = " = null;";
+						valSuffix = ` = null; //${typeof value}`;
 					}
-					variables.push(`${keyStr}${valSuffix};`);
+					variables.push(`${keyStr}${valSuffix}`);
 				}
 			} catch (error) {
 				//防止某些層級的 getter 屬性在執行時報錯
@@ -2765,7 +2768,7 @@ function onGameApp() {
 		if (methods.length > 0) {
 				logMsg += methods.map(m => {
 					if (m.code.includes("function Class()")) {
-						const updatedCode = m.code.replace("function Class()", `class ${m.name}()`);
+						const updatedCode = m.code.replace("function Class()", `function ${m.name}()`);
 						return `${updatedCode}\n`;
 					} else {
 						return `${m.code}\n`;
@@ -2906,7 +2909,7 @@ function onGameApp() {
 			//await exportAllSummonData() ;
 			//await exportAllSoulData();
 			//await exportAllWeaponData();
-			//await smartAttack();
+			//await customAbilityActivation();
 
 			const rescueId = await battleGetRescueId();//救援碼
 			if (rescueId) {
@@ -6676,6 +6679,20 @@ function onGameApp() {
 		}
 	}
 	/**
+	 * @description 檢查Next按鈕啟用
+	 * @returns {boolean} Attack可點擊回傳true,否則回傳false
+	 */
+	async function isNextButtonReady() {
+		try {
+			const battleUI = _battleWorld.battleUI;
+			const centerPanel = battleUI.CenterPanel;
+			const btnNext = battleUI.NextButton._widget;
+			return (centerPanel._visibleButton === centerPanel.BUTTONS.NEXT && btnNext.isEnabled());
+		} catch (error) {
+			return false;
+		}
+	}
+	/**
 	 * @description 等待Attack按鈕啟用
 	 * @param {number} [timeout=15000] - 最長等待時間 (ms)
 	 */
@@ -6749,7 +6766,7 @@ function onGameApp() {
 				//點擊攻擊
 				const currentState = kh.createInstance("AutoScenarioStateHandler")?.getViewState()?.STATE ?? 0;
 				if (currentState > 0 && _autoAttackEnabled) {
-					_battleWorld.battleUI.AttackButton.simulateAttack();
+					await _battleWorld.battleUI.AttackButton.simulateAttack();
 				}
 				_playerActionTime = new Date();
 				//開始監視戰鬥
@@ -6790,11 +6807,19 @@ function onGameApp() {
 				if (await isAttackButtonReady()) {
 					//攻擊間格時間檢查
 					_playerActionTime = new Date();
-					//取得當前狀態 (0:手動,1:綠,2:紅),手動不點擊攻擊
-					const currentState = kh.createInstance("AutoScenarioStateHandler")?.getViewState()?.STATE ?? 0;
-					if (currentState > 0 && _autoAttackEnabled) {
-						_battleWorld.battleUI.AttackButton.simulateAttack();//遊戲的攻擊函數
+					if (_autoAttackEnabled) {
+						//取得當前狀態 (0:手動,1:綠,2:紅),手動不點擊攻擊
+						const currentState = kh.createInstance("AutoScenarioStateHandler")?.getViewState()?.STATE ?? 0;
+						if (currentState > 0) {
+							await _battleWorld.battleUI.AttackButton.simulateAttack();//遊戲的攻擊函數
+						} else {
+							await customAbilityActivation();
+						}
 					}
+				} else if (await isNextButtonReady()) {
+					//檢查Next button
+					const btnNext = _battleWorld.battleUI.NextButton;
+					btnNext._onTouchEvent(btnNext._widget, 2);
 				} else {
 					await onAutoBattling();//自動攻擊中
 					if (await hasNoLivingCharacters()) {
@@ -6862,22 +6887,41 @@ function onGameApp() {
 		try {
 			//檢查可用幻獸
 			const battleWorld = kh.createInstance("battleWorld");
+			if (!battleWorld) return;
+
 			const summonList = battleWorld?.battleUI?.SummonPanelGroup?.panelList;
+			let summonIndex = -2;
 			if (summonList) {
 				for (const summon of summonList) {
 					if (summon.isUsable()) {
-						battleWorld.summonAttack(summon.index);
-						return;
+						summonIndex = summon.index;
+						break;
 					}
 				}
 			}
+			if (summonIndex !== -2) {
+				try {
+					await battleWorld.summonAttackExecute(summonIndex);
+				} catch (error) {
+					if (error && error.bufferedInputLength >= 2) {
+						debugLog("summonAttackExecute fail");
+					}
+				}
+				await sleep(300);
+				return;
+			}
 			//取得場上可用技能
-			const characterList = battleWorld.characterList;
-			const abilityList = battleWorld.characterAbilityList;
+			const characterList = battleWorld.characterList || [];
+			const abilityList = battleWorld.characterAbilityList || [];
 			const abilityArray = [];
 			for (let i = 0; i < characterList.length; i++) {
 				const character = characterList[i];
+				if (!character) continue;
+				if (character.hp === 0) continue;
+
 				const skills = abilityList[i];
+				if (!skills || !Array.isArray(skills)) continue;
+
 				for (const skill of skills) {
 					if (!skill._abilityData.ready) continue;
 					let thePriority = 99;
@@ -7031,36 +7075,129 @@ function onGameApp() {
 					if (thePriority === 99) continue;
 					abilityArray.push({
 						character_index: i,//角色索引
-						isJob: character.isJob,//是否為英靈
-						id: character.id,//英靈或神姬ID
-						ability_index: skill._index,//技能索引(從1開始)
+						ability_index: skill._index,//技能索引
 						color: skill._abilityData.color,//技能顏色
 						selectable: skill._abilityData.party_member_selectable,//需要指定成員
+						selectableType: skill._abilityData.party_member_selectable_type,//指定類型
 						priority: thePriority//優先級別
 					});
 				}
 			}
-			//技能排序
 			if (abilityArray.length > 0) {
+				//技能排序
 				abilityArray.sort((a, b) => a.priority - b.priority);
-				const abilityItem = abilityArray[0];//取出第一個
-				const character = characterList[abilityItem.character_index];
-				if (abilityItem.selectable) {
-					battleWorld.useAbility(character, abilityItem.ability_index, characterList[0]);
-				} else {
-					battleWorld.useAbility(character, abilityItem.ability_index);
+				const attackTargetPos = await battleWorld.getTarget();
+				for (const abilityItem of abilityArray) {
+					const character = characterList[abilityItem.character_index];
+					const abilityPos = abilityItem.ability_index;
+					let targetChara = null;
+					if (abilityItem.selectable) {
+						//取得技能指定目標
+						const targetIndex = getPartyTarget(abilityItem.selectableType);
+						if (targetIndex === -1) continue;
+						targetChara = characterList[targetIndex];//取得目標角色
+					}
+					const bufferedInput = kh.createInstance("AbilityBufferedInput", [character, abilityPos, attackTargetPos, targetChara]);
+					await bufferedInput.execute();
+					return;
 				}
-				return;
 			}
 			//爆裂選項,Full Burst才開啟?
-
-			//HP檢查, 小於60%時檢查有無大小藥水
-
+			//const burstOn = battleWorld.battleUI._flgUseSpecialAttack;
+			//battleWorld._onPushBurstButtonCallback(battleWorld.battleUI.BurstButton._widget, ccui.Widget.TOUCH_ENDED)
+			//評估並執行喝水
+			const cureItems = battleWorld?.battleStatus?._cureItems;
+			const hasPotion = (cureItems?.[0]?.count ?? 0) > 0;
+			const hasSuperPotion = (cureItems?.[1]?.count ?? 0) > 0;
+			const potionNeed = needPotion();
+			if (hasSuperPotion && potionNeed.shouldUse && !hasPotion) {
+				await battleWorld.useItem("cure-medic");
+			} else if (potionNeed.needs > 0 && hasPotion) {
+				await battleWorld.useItem("cure-bottle", potionNeed.needFirst);
+			}
 			//點擊攻擊按鍵
-
+			await battleWorld.battleUI.AttackButton.simulateAttack();
+			await sleep(300);
 		} catch(error) {
 			debugLog("smartBattle: " + error);
 		}
+	}
+	/**
+	 * @description 取得技能定對象
+	 * @param {String} abilityType - 技能類型 (例如："revive", "heal", "buff")
+	 * @returns {Number} 若成功回傳技能指定對象索引，否則回傳 -1
+	 */
+	function getPartyTarget(abilityType) {
+		try {
+			const battleWorld = kh.createInstance("battleWorld");
+			//復活,找第一個死亡的角色
+			if (abilityType === "revive") {
+				return battleWorld?.fallenList?.[0]?.index ?? -1;
+			}
+			const characterList = battleWorld.characterList;
+			if (!Array.isArray(characterList)) return -1;
+			//增益,找第一個存活的角色
+			if (abilityType === "buff") {
+				return characterList.findIndex(character => character?.hp > 0);
+			}
+			//治癒
+			if (abilityType === "heal") {
+				let targetIndex = -1;
+				let lowestHpRatio = 1;
+				characterList.forEach((character, index) => {
+					if (character.hp > 0 && character.hpmax > 0) {
+						const currentHpRatio = character.hp / character.hpmax;
+						if (currentHpRatio < lowestHpRatio) {
+							lowestHpRatio = currentHpRatio;
+							targetIndex = index;
+						}
+					}
+				});
+				return targetIndex;
+			}
+			debugLog("unknown ability type: " + abilityType);
+			return -1;
+		} catch(error) {
+			debugLog("getPartyTarget: " + error);
+			return -1;
+		}
+	}
+	/**
+	 * @description 評估是否需要喝水
+	 * @returns {{ needs: number, needFirst: number, needHow: number, shouldUse: boolean }}
+	 * - needs: 血量低於 50% 且需要喝水的角色總數
+	 * - needFirst: 最優先需要喝水的角色陣列索引
+	 * - needHow: 優先目標的血量比例
+	 * - shouldUse:是否喝水
+	 */
+	function needPotion() {
+		const result = { needs: 0, needFirst: -1, needHow: 1, shouldUse: false};
+		try {
+			const battleWorld = kh.createInstance("battleWorld");
+			const characterList = battleWorld?.characterList;
+			if (!Array.isArray(characterList)) return result;
+
+			characterList.forEach((character, index) => {
+				const data = character?._avatarData;
+				if (!data || data.hp === 0 || data.hpmax === 0) return;
+
+				const hpRatio = data.hp / data.hpmax;
+				if (hpRatio < 0.5) {
+					result.needs += 1;
+					const isFirstTarget = result.needFirst === -1;
+					const isJobCharacter = data.is_job;
+					const isLowerHpRatio = hpRatio < result.needHow; 
+					if (isFirstTarget || isJobCharacter || isLowerHpRatio) {
+						result.needFirst = index;
+						result.needHow = isJobCharacter ? -1 : hpRatio;
+					}
+				}
+			});
+			result.shouldUse = (result.needs > 1) || (result.needs > 0 && result.needHow === -1);
+		} catch(error) {
+			debugLog(`needPotion Exception: ${error.message || error}`);
+		}
+		return result;
 	}
 	/**
 	 * @description 檢查隊伍是否已經全滅
@@ -7084,7 +7221,7 @@ function onGameApp() {
 	async function onReloadAttackAgain() {
 		try {
 			if (await isAttackButtonReady()) {
-				_battleWorld.battleUI.AttackButton.simulateAttack();
+				await _battleWorld.battleUI.AttackButton.simulateAttack();
 				_playerActionTime = new Date();
 			} 
 		} catch(error) {
