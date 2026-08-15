@@ -1698,6 +1698,9 @@ function onGameApp() {
 	let _raidPointsDelayOk = false;//是否已關閉功績顯示
 	const _minimumDamage = 1000000;//戰鬥紀錄可顯示的最小傷害
 
+	const _jobIdCache = {};//存放英靈 a_job_id 對應 job_id 的字典檔快取
+	const _himeIdCache = {};//存放神姬 a_character_id 對應 character_id 的字典檔快取
+
 	//daily robot資料區
 	const _dailyQuests = [];//待處理的每日戰鬥關卡
 	let _dailyQuestLevelMax = GM_getValue("dailyQuestLevelMax", 111);//每日Raid關卡等級上限,大於此等級不執行
@@ -1993,7 +1996,7 @@ function onGameApp() {
 	async function initNetworkHooks() {
 		try {
 			//等待kh建立完成
-			if (!khutil || !kh || !kh.Monitor || !kh.HttpConnection || !kh.PlayerGameConfig || !kh.Character || !kh.Enemy) {
+			if (!khutil || !kh || !kh.Monitor || !kh.HttpConnection || !kh.PlayerGameConfig || !kh.Character || !kh.Enemy || !kh.Summon) {
 				setTimeout(initNetworkHooks, 500);
 				return;
 			}
@@ -2077,6 +2080,8 @@ function onGameApp() {
 			kh.HttpConnection._openRetryMessagePopup = function (argsData, error) {
 				this._retryAfterMinWait(argsData, error, 500);
 			}
+			//幻獸動畫
+			kh.Summon.prototype.FADE_SPEED = 0.1;//default 0.3
 			//動畫加速
 			kh.PlayerGameConfig.prototype.BATTLE_SPEED_SETTINGS.quick = _animationSpeedFactor;
 			debugLog('Animation Speed: ' + _animationSpeedFactor);
@@ -2446,8 +2451,9 @@ function onGameApp() {
 			} else {
 				debugLog("no apiPlayers!");
 			}
-			//取得補充AP|BP的道具ID
-			await initApBp();
+			await initApBp();//取得補充AP|BP的道具ID
+			await fetchAndCacheJobData();//快取英靈AID
+			await fetchAndCacheHimeData();//快取神姬AID
 			//顯示現在場景
 			const currentSceneName = cc.director._runningScene.sceneName;
 			sendSceneText(currentSceneName ?? "*");
@@ -2911,12 +2917,14 @@ function onGameApp() {
 			//await exportAllWeaponData();
 			//await customAbilityActivation();
 
-			const rescueId = await battleGetRescueId();//救援碼
-			if (rescueId) {
-				sendStringToFirebase(rescueId);
-			} else {
-				debugLog("no rescue id");
-			}
+			fetchAndCacheHimeData();
+
+			// const rescueId = await battleGetRescueId();//救援碼
+			// if (rescueId) {
+			// 	sendStringToFirebase(rescueId);
+			// } else {
+			// 	debugLog("no rescue id");
+			// }
 
 			// //個人留言板
 			// const raidRes = await _httpClient.get({
@@ -3156,6 +3164,66 @@ function onGameApp() {
 			debugLog("fetchOwnedStamps: " + error);
 		}
 	}
+	/**
+	 * @description 查詢持有英靈資訊，並更新到本地的字典檔快取中
+	 * @returns {Promise<void>}
+	 */
+	async function fetchAndCacheJobData() {
+		try {
+			const jobRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_jobs`});
+			const jobList = jobRes?.body?.data;
+			if (!Array.isArray(jobList)) {
+				debugLog("fetchAndCacheJobData fail");
+				return;
+			}
+			for (const job of jobList) {
+				_jobIdCache[job.a_job_id] = job.job_id;
+			}
+			debugLog("fetchAndCacheJobData ok");
+		} catch (error) {
+			debugLog("fetchAndCacheJobData: " + error);
+		}
+	}
+	/**
+	 * @description 利用 a_job_id 從儲存的字典快取中快速查詢 job_id
+	 * @param {Number|String} aJobId - 想要查詢的 a_job_id
+	 * @returns {Number|null} 回傳對應的 job_id，若找不到則回傳 null
+	 */
+	function getJobId(aJobId) {return _jobIdCache[aJobId] ?? null;}
+	/**
+	 * @description 查詢持有神姬資訊，並更新到本地的字典檔快取中
+	 */
+	async function fetchAndCacheHimeData() {
+		try {
+			//設置神姬過濾條件
+			await _httpClient.post({
+				url: `${kh.env.urlRoot}/a_players/me/display_filter/book_chara`,
+				json: {rarity: [],element_type: [],character_type: [],proper_weapon_type: []}
+			});
+			//獲取持有的神姬列表
+			const charactersRes = await _httpClient.get({
+				url: `${kh.env.urlRoot}/a_characters`,
+				json: {display_filter_name: "book_chara", page: 1, per_page: 100000, from_tower: false}
+			});
+			const charactersList = charactersRes?.body?.data;
+			if (!Array.isArray(charactersList)) {
+				debugLog("fetchAndCacheHimeData fail");
+				return;
+			}
+			for (const character of charactersList) {
+				_himeIdCache[character.a_character_id] = character.character_id;
+			}
+			debugLog("fetchAndCacheHimeData ok");
+		} catch (error) {
+			debugLog("fetchAndCacheHimeData: " + error);
+		}
+	}
+	/**
+	 * @description 利用 a_character_id 從儲存的字典快取中快速查詢 character_id
+	 * @param {Number|String} aCharacterId - 想要查詢的 a_character_id
+	 * @returns {Number|null} 回傳對應的 character_id，若找不到則回傳 null
+	 */
+	function getCharacterId(aCharacterId) {return _himeIdCache[aCharacterId] ?? null;}
 	/**
 	 * @description 查詢所有隊伍資訊
 	 */
@@ -6484,7 +6552,7 @@ function onGameApp() {
 			//計算點擊次數
 			const clicksNeeded = (targetState - currentState + 3) % 3;
 			for (let i = 0; i < clicksNeeded; i++) {
-				autoButton._onTouchEvent(autoButton._widget, 2);
+				autoButton._onTouchEvent(autoButton._widget, ccui.Widget.TOUCH_ENDED);
 			}
 		} catch (error) {
 			debugLog("setBattleAutoState: " + error);
@@ -6660,6 +6728,18 @@ function onGameApp() {
 		}
 	}
 	/**
+	 * @description 選擇Burst啟用狀態
+	 */
+	async function setBattleBurstState(enabled) {
+		try {
+			const currentState = _battleWorld.battleUI.isFlgUseSpecialAttack();
+			if (enabled === currentState) return;
+			await _battleWorld._onPushBurstButtonCallback(_battleWorld.battleUI.BurstButton._widget, ccui.Widget.TOUCH_ENDED);
+		} catch(error) {
+			debugLog("setBattleBurstState: " + error);
+		}
+	}
+	/**
 	 * @description 檢查Attack按鈕啟用
 	 * @returns {boolean} Attack可點擊回傳true,否則回傳false
 	 */
@@ -6763,6 +6843,7 @@ function onGameApp() {
 				}
 				await battleAutoSelectEnemy();//選擇敵方
 				await battleRaidPointsDelay();//測試中的取消功績延遲
+				if (_autoAttackEnabled) await setBattleBurstState(true);//讓burst可用
 				//點擊攻擊
 				const currentState = kh.createInstance("AutoScenarioStateHandler")?.getViewState()?.STATE ?? 0;
 				if (currentState > 0 && _autoAttackEnabled) {
@@ -6811,15 +6892,15 @@ function onGameApp() {
 						//取得當前狀態 (0:手動,1:綠,2:紅),手動不點擊攻擊
 						const currentState = kh.createInstance("AutoScenarioStateHandler")?.getViewState()?.STATE ?? 0;
 						if (currentState > 0) {
-							await _battleWorld.battleUI.AttackButton.simulateAttack();//遊戲的攻擊函數
+							await _battleWorld.battleUI.AttackButton.simulateAttack();//遊戲的攻擊函式
 						} else {
-							await customAbilityActivation();
+							await customAbilityActivation();//自訂技能施放順序
 						}
 					}
 				} else if (await isNextButtonReady()) {
 					//檢查Next button
 					const btnNext = _battleWorld.battleUI.NextButton;
-					btnNext._onTouchEvent(btnNext._widget, 2);
+					btnNext._onTouchEvent(btnNext._widget, ccui.Widget.TOUCH_ENDED);
 				} else {
 					await onAutoBattling();//自動攻擊中
 					if (await hasNoLivingCharacters()) {
@@ -6881,34 +6962,28 @@ function onGameApp() {
 		}
 	}
 	/**
-	 * @description 自訂技能施放, 幻獸->黃->綠->藍->優先紅->紅->減CT技->爆裂選擇->檢血吃藥->攻擊
+	 * @description 自訂技能施放, 幻獸->黃->綠->藍->優先紅->紅->減CT技->吃藥->攻擊
 	 */
 	async function customAbilityActivation() {
 		try {
-			//檢查可用幻獸
 			const battleWorld = kh.createInstance("battleWorld");
 			if (!battleWorld) return;
-
-			const summonList = battleWorld?.battleUI?.SummonPanelGroup?.panelList;
-			let summonIndex = -2;
-			if (summonList) {
-				for (const summon of summonList) {
-					if (summon.isUsable()) {
-						summonIndex = summon.index;
-						break;
+			//檢查可用幻獸
+			const summonList = battleWorld?.battleUI?.SummonPanelGroup?.panelList || [];
+			if (summonList.length > 0) {
+				const targetSummon = summonList.find(summon => summon.isUsable());
+				if (targetSummon) {
+					targetSummon.setLocked(true);//提早鎖定
+					try {
+						await battleWorld.summonAttackExecute(targetSummon.index);
+					} catch (error) {
+						if (error && error.bufferedInputLength >= 2) {
+							debugLog("summonAttackExecute fail");
+						}
 					}
+					await sleep(100);
+					return;
 				}
-			}
-			if (summonIndex !== -2) {
-				try {
-					await battleWorld.summonAttackExecute(summonIndex);
-				} catch (error) {
-					if (error && error.bufferedInputLength >= 2) {
-						debugLog("summonAttackExecute fail");
-					}
-				}
-				await sleep(300);
-				return;
 			}
 			//取得場上可用技能
 			const characterList = battleWorld.characterList || [];
@@ -6924,7 +6999,7 @@ function onGameApp() {
 
 				for (const skill of skills) {
 					if (!skill._abilityData.ready) continue;
-					let thePriority = 99;
+					let thePriority = 99;//越小越優先施放
 					//一般準則
 					switch (skill._abilityData.color) {
 						case "yellow":thePriority=20;break;
@@ -6934,7 +7009,8 @@ function onGameApp() {
 					}
 					//特殊規則
 					if (character.isJob) {
-						if (character.id === 34) {
+						const jobId = getJobId(character.id);
+						if (jobId === 34) {
 							//愛迪生
 							switch (skill._index) {
 							case 1:thePriority=10;break;
@@ -6943,7 +7019,7 @@ function onGameApp() {
 							case 4:thePriority=14;break;
 							}
 						}
-						if (character.id === 50) {
+						if (jobId === 50) {
 							//貝多芬
 							switch (skill._index) {
 							case 1:thePriority=10;break;
@@ -6953,7 +7029,8 @@ function onGameApp() {
 						}
 					} else {
 						//優先紅30, 減CT技(個人)36, 減CT技(全部)40, 不使用99
-						switch (character.id) {
+						const himeId = getCharacterId(character.id);
+						switch (himeId) {
 							case 5167://[戦友想う刃]ルー
 								if (skill._index === 1) thePriority = 31;
 								break;
@@ -7067,7 +7144,7 @@ function onGameApp() {
 									case 4: thePriority = 40; break;
 								}
 								break;
-							case 9014: // ハデス[神想真化]
+							case 9014://ハデス[神想真化]
 								if (skill._index === 1) thePriority = 30;
 								break;
 						}
@@ -7110,10 +7187,9 @@ function onGameApp() {
 								const failedSkill = originalSkills.find(s => s._index === skillIndex);
 								if (failedSkill && failedSkill._abilityData) {
 									failedSkill._abilityData.ready = false;
-									debugLog(`fail: character[${charIndex}].ability[${skillIndex}]`);
+									//debugLog(`fail: character[${charIndex}].ability[${skillIndex}]`);
 								}
 							}
-							await sleep(100);
 							continue;
 						} else {
 							debugLog("_useAbility: " + JSON.stringify(error2, null, 2));
@@ -7123,9 +7199,6 @@ function onGameApp() {
 					return;
 				}
 			}
-			//爆裂選項,Full Burst才開啟?
-			//const burstOn = battleWorld.battleUI._flgUseSpecialAttack;
-			//battleWorld._onPushBurstButtonCallback(battleWorld.battleUI.BurstButton._widget, ccui.Widget.TOUCH_ENDED)
 			//評估並執行喝水
 			const cureItems = battleWorld?.battleStatus?._cureItems;
 			const hasPotion = (cureItems?.[0]?.count ?? 0) > 0;
@@ -7133,8 +7206,10 @@ function onGameApp() {
 			const potionNeed = needPotion();
 			if (hasSuperPotion && potionNeed.shouldUse && !hasPotion) {
 				await battleWorld.useItem("cure-medic");
+
 			} else if (potionNeed.needs > 0 && hasPotion) {
 				await battleWorld.useItem("cure-bottle", potionNeed.needFirst);
+
 			}
 			//點擊攻擊按鍵
 			await battleWorld.battleUI.AttackButton.simulateAttack();
