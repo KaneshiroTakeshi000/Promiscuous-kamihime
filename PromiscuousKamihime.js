@@ -1907,28 +1907,28 @@ function onGameApp() {
 			_janitorMode = newValue;//煉獄收屍者
 		});
 		GM_addValueChangeListener("dailyQuestLevelMax", function(key, oldValue, newValue, remote) {
-			 _dailyQuestLevelMax = newValue;//每日Raid關卡等級上限
+			_dailyQuestLevelMax = newValue;//每日Raid關卡等級上限
 		});
 		GM_addValueChangeListener("dailyAccessory", function(key, oldValue, newValue, remote) {
 			_dailyAccessoryQuestId = newValue;//每日飾品任務的執行關卡
 		});
 		GM_addValueChangeListener("rescueInterval", function(key, oldValue, newValue, remote) {
-			 _rescueInterval = newValue;//救援碼詢問間隔時間
+			_rescueInterval = newValue;//救援碼詢問間隔時間
 		});
 		GM_addValueChangeListener("myRaidQuestLevelMin", function(key, oldValue, newValue, remote) {
-			 _myRaidQuestLevelMin = newValue;//關卡等級下限
+			_myRaidQuestLevelMin = newValue;//關卡等級下限
 		});
 		GM_addValueChangeListener("myRaidQuestLevelMax", function(key, oldValue, newValue, remote) {
-			 _myRaidQuestLevelMax = newValue;//關卡等級上限
+			_myRaidQuestLevelMax = newValue;//關卡等級上限
 		});
 		GM_addValueChangeListener("publicRaidEnemyHp", function(key, oldValue, newValue, remote) {
-			 _publicRaidEnemyHp = newValue;//血量閥值
+			_publicRaidEnemyHp = newValue;//血量閥值
 		});
 		GM_addValueChangeListener("publicRaidParticipants", function(key, oldValue, newValue, remote) {
-			 _publicRaidParticipants = newValue;//人數閥值
+			_publicRaidParticipants = newValue;//人數閥值
 		});
 		GM_addValueChangeListener("publicRaidEnemyLevel", function(key, oldValue, newValue, remote) {
-			 _publicRaidEnemyLevel = newValue;//等級閥值
+			_publicRaidEnemyLevel = newValue;//等級閥值
 		});
 	}
 	/**
@@ -1993,8 +1993,7 @@ function onGameApp() {
 				return this._wrapFireEvent(function (req) {
 					req = this._normalizeId(req);
 					const actualUrl = this._URLDelegate.process(req);
-					return this._connect.get(actualUrl)
-						.fail(this.checkFailedReason.bind(this));
+					return this._connect.get(actualUrl).fail(this.checkFailedReason.bind(this));
 				}.bind(this), requestData, reqType);
 			};
 			//網路傳輸攔截
@@ -2300,7 +2299,7 @@ function onGameApp() {
 			kh.env.sendErrorLog = false;
 			//攔截開始戰鬥
 			const originalMethodStart = kh.BattleWorld.prototype._start;
-        	kh.BattleWorld.prototype._startRaw = kh.BattleWorld.prototype._start;
+			kh.BattleWorld.prototype._startRaw = kh.BattleWorld.prototype._start;
 			kh.BattleWorld.prototype._start = async function(sceneInstanceId) {const result = await originalMethodStart.apply(this, [sceneInstanceId]);setTimeout(onBattleStart, 0);return result;}			
 			//攔截戰鬥結束
 			const originalMethodEndBattle = kh.BattleWorld.prototype.endBattle;
@@ -2311,9 +2310,9 @@ function onGameApp() {
 			kh.Turn.prototype.setTurnNumberRaw = kh.Turn.prototype.setTurnNumber;
 			kh.Turn.prototype.setTurnNumber = function (t) {
 				const result = originalMethodSetTurnNumber.call(this, t);
-				sendTurnText(`(${_currentStage}|${_maxStage}) ${t+1}`);
+				sendTurnText(`(${_currentStage}/${_maxStage}),${t+1}`);
 				return result;
-			}	
+			}
 			//攔截自己的戰鬥指令,檢測自動戰鬥中卡住的情況
 			const originalMethodUseAbility = kh.BattleWorld.prototype.useAbility;
 			kh.BattleWorld.prototype.useAbilityRaw = kh.BattleWorld.prototype.useAbility;
@@ -2420,10 +2419,13 @@ function onGameApp() {
 			const apiPlayers = kh.createInstance("apiAPlayers");
 			if (apiPlayers) {
 				const playerRes = await apiPlayers.getMeNumeric();
-				_playerId = playerRes.body.a_player_id;
-				//_playerId = playerRes.body.dmm_id;
-				const playerName = playerRes.body.name;
-				debugLog(`player: ${playerName}(${_playerId})`);
+				_playerId = playerRes?.body?.a_player_id;
+				if (_playerId) {
+					const playerName = playerRes.body.name;
+					debugLog(`player: ${playerName}(${_playerId})`);
+				} else {
+					debugLog("no player id!");
+				}
 			} else {
 				debugLog("no apiPlayers!");
 			}
@@ -2649,6 +2651,36 @@ function onGameApp() {
 		}
 	}
 	/**
+	 * @description 通用掃描工具：讀取並輸出指定物件或原型的所有屬性與函式
+	 * @param {Object} targetPrototype - 想要掃描的目標變數
+	 * @param {String} name - 該目標的名稱，用於顯示在 Log 中方便辨識
+	 */
+	function dumpPrototype(targetPrototype, name) {
+		if (!targetPrototype) {
+			debugLog(`Error: ${name} is undefined or null. Cannot dump.`);
+			return;
+		}
+		const properties = Object.getOwnPropertyNames(targetPrototype);
+		const methodNames = [];
+		const variableNames = [];
+		for (const key of properties) {
+			try {
+				if (typeof targetPrototype[key] === 'function') {
+					methodNames.push(key);
+				} else {
+					variableNames.push(key);
+				}
+			} catch (error) {
+				debugLog(`Warning: Cannot read property '${key}' in ${name}`);
+			}
+		}
+		debugLog(`Dump: ${name}`);
+		debugLog(`Total Properties found: ${properties.length}`);
+		debugLog(`Variables: ${variableNames.join(", ")}`);
+		debugLog(`Methods (Functions): ${methodNames.join(", ")}`);
+		debugLog(`Dump End: ${name}`);
+	}
+	/**
 	 * @description 查詢一個物件底下的所有方法與變數，並印出至除錯視窗
 	 * @param {Object} obj - 要查詢的目標物件
 	 * @param {string} [objName="default"] - 自訂顯示的物件名稱，方便在日誌中辨識
@@ -2696,7 +2728,7 @@ function onGameApp() {
 				} else {
 					let valSuffix = "";
 					if (typeof value === 'string') {
-						valSuffix = ` = "${value};"`;
+						valSuffix = ` = "${value}";`;
 					} else if (typeof value === 'number') {
 						valSuffix = ` = ${value};`;
 					} else if (typeof value === 'boolean') {
@@ -2733,11 +2765,11 @@ function onGameApp() {
 			return a.name.localeCompare(b.name);
 		});
 		//格式化文字排版
-		let logMsg = `${objName}.Variables/Attributes\n`;
+		let logMsg = `//${objName}.Variables/Attributes\n`;
 		if (variables.length > 0) {
 			logMsg += variables.map(v => `let ${v}`).join('\n') + '\n';
 		}
-		logMsg += `\n${objName}.function\n`;
+		logMsg += `\n//${objName}.function\n`;
 		if (methods.length > 0) {
 				logMsg += methods.map(m => {
 					if (m.code.includes("function Class()")) {
@@ -2869,6 +2901,12 @@ function onGameApp() {
 	 */
 	async function executeDeveloperTests() {
 		try {
+			// dumpPrototype(kh.Monitor.prototype, "Monitor");
+			// dumpPrototype(kh.HttpConnection.prototype, "HttpConnection");
+			// dumpPrototype(kh.PlayerGameConfig.prototype, "PlayerGameConfig");
+			// dumpPrototype(kh.Summon.prototype, "Summon");
+			// dumpPrototype(kh.BattleWorld.prototype, "BattleWorld");
+			// dumpPrototype(kh._statisticsRepository.prototype, "statisticsRepository");
 			//列出所有轉蛋資訊
 			//fetchAllGachaPools();
 			//取得隊伍資料
@@ -2880,6 +2918,25 @@ function onGameApp() {
 			//fetchMaterialQuest();
 			//fetchAccessoryQuest();
 
+			// const battleWorld = kh.createInstance("battleWorld");
+			// const characterList = battleWorld.characterList || [];
+			// for (let i = 0; i < characterList.length; i++) {
+			// 	const character = characterList[i];
+			// 	debugLog(`chara:${character.name}, id:${character.id}`);
+			// }
+			// const members = battleWorld?.battleStatus?._partyMembers;
+			// if (members && members.length > 0) {
+			// 	const effects = members[0].status_effects;
+			// 	for (const effect of effects) {
+			// 		debugLog(JSON.stringify(effect));
+			// 		//ex: {"id":23,"description":"??","level":0,"turn":2}
+			// 		//{"id":13851,"description":"處於演奏蒼之旋律狀態","level":1}
+			// 		//{"id":13850,"description":"處於演奏黃之旋律狀態","level":1}
+			// 		//{"id":13848,"description":"處於演奏紅之旋律狀態","level":1}
+			// 		//{"id":13849,"description":"處於演奏翠之旋律狀態","level":1}
+			// 	}
+			// }
+
 			const rescueId = await battleGetRescueId();//救援碼
 			if (rescueId) {
 				sendStringToFirebase(rescueId);
@@ -2888,16 +2945,13 @@ function onGameApp() {
 			}
 
 			// //個人留言板
-			// const raidRes = await _httpClient.get({
-			// 	url: kh.env.urlRoot + "/a_greets",
-			// 	json: { a_player_id: "me" }
-			// });
+			// const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_greets`,json: {a_player_id: "me"}}, "unblock");
 			// if (raidRes.body.max_record_count < 1) {
 			// 	debugLog("no greets");
 			// }
 			// debugLog(JSON.stringify(raidRes.body, null, 2));
 			// //公會留言板
-			// const unionRes = await _httpClient.get({url: kh.env.urlRoot + "/a_unions/me/chats"});
+			// const unionRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_unions/me/chats`}, "unblock");
 			// debugLog(JSON.stringify(unionRes.body, null, 2));
 
 			//debugLog(JSON.stringify(detailRes.body, null, 2));
@@ -3032,9 +3086,9 @@ function onGameApp() {
 		try {
 			if (!_httpClient) { debugLog("HTTP connection not initialized"); return; }
 			const questRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_quests",
+				url: `${kh.env.urlRoot}/a_quests`,
 				json: { type: "quest_portal", portal_type: "elemental" }
-			});
+			}, "unblock");
 			if (questRes && questRes.body) {
 				debugLog(JSON.stringify(questRes.body, null, 2));
 			}
@@ -3049,9 +3103,9 @@ function onGameApp() {
 		try {
 			if (!_httpClient) { debugLog("HTTP connection not initialized"); return; }
 			const questRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_quests",
+				url: `${kh.env.urlRoot}/a_quests`,
 				json: { type: "quest_portal", portal_type: "material" }
-			});
+			}, "unblock");
 			if (questRes && questRes.body) {
 				debugLog(JSON.stringify(questRes.body, null, 2));
 			}
@@ -3068,7 +3122,7 @@ function onGameApp() {
 						const questRes = await _httpClient.get({
 				url: kh.env.urlRoot + "/a_quests",
 				json: { type: "quest_portal", portal_type: "accessory" }
-			});
+			}, "unblock");
 			if (questRes && questRes.body) {
 				const questsFlame = questRes.body.accessory_quest_list.flame.data;
 				debugLog("Flame");
@@ -3102,9 +3156,7 @@ function onGameApp() {
 	async function fetchOwnedStamps() {
 		try {
 			if (!_httpClient) { debugLog("HTTP connection not initialized"); return; }
-			const stampsRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_stamps"
-			});
+			const stampsRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_stamps`}, "unblock");
 			if (stampsRes && stampsRes.body) {
 				debugLog(JSON.stringify(stampsRes.body, null, 2));
 			}
@@ -3146,9 +3198,7 @@ function onGameApp() {
 	async function fetchAllGachaPools() {
 		try {
 			if (!_httpClient) {debugLog("HTTP connection not initialized"); return;}
-			const gachaRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/gacha_categories"
-			});
+			const gachaRes = await _httpClient.get({url: `${kh.env.urlRoot}/gacha_categories`}, "unblock");
 			if (gachaRes && gachaRes.body) {
 				debugLog(JSON.stringify(gachaRes.body, null, 2));
 			}
@@ -3320,9 +3370,7 @@ function onGameApp() {
 			const raidEventType = "raid_event";
 			if (_raidEventID === 0) {
 				//取得活動ID
-				const eventRes = await _httpClient.get({
-					url: kh.env.urlRoot + "/a_banners/event_on_period"
-				});
+				const eventRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_banners/event_on_period`}, "unblock");
 				const currentEvent = eventRes.body.data.find((e) => raidEventType === e.event_type);
 				if (!currentEvent) {
 					debugLog("no event id.");
@@ -3345,9 +3393,9 @@ function onGameApp() {
 			const raidEventType = "event_raid";
 			//取得活動道具數量
 			const questRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_quests",
+				url: `${kh.env.urlRoot}/a_quests`,
 				json: { type: "event", "event_id": _raidEventID}
-			});
+			}, "unblock");
 			if (!questRes) {debugLog("no respone.");return true;}
 			if (!questRes.body) {debugLog("no respone.");return true;}
 			if (!questRes.body.data) {debugLog("no respone.");return true;}
@@ -3469,7 +3517,7 @@ function onGameApp() {
 				if (router) router.navigate("mypage/my_001");
 			}
 			//每日免費水晶
-			const coinShopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/1`});
+			const coinShopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/1`}, "unblock");
 				if (coinShopRes?.body?.catalogs) {
 				const freeJewelsProduct = coinShopRes.body.catalogs
 					.flatMap(catalog => catalog.products)
@@ -3478,7 +3526,7 @@ function onGameApp() {
 					await _httpClient.post({
 						url: `${kh.env.urlRoot}/shop`, 
 						json: {product_id: freeJewelsProduct.product_id, amount: Number(freeJewelsProduct.stock_info.amount)}
-					});
+					}, "unblock");
 					debugLog(`Exchange successful for product ID: ${freeJewelsProduct.product_id}`);
 				} else {
 					debugLog(`No free jewels`);
@@ -3579,10 +3627,7 @@ function onGameApp() {
 				}
 			}
 			//加入RAID關卡
-			const raidRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_quests",
-				json: { type: "raid" }
-			});
+			const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_quests`, json: {type: "raid"}}, "unblock");
 			const questLists = raidRes?.body?.raid_quest_lists
 			if (questLists) {
 				const questList = [];
@@ -3698,9 +3743,7 @@ function onGameApp() {
 			if (!_httpClient) {debugLog("HTTP connection not initialized"); return;}
 			debugLog("Search union...");
 			//查詢活動ID
-			const bannerRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_banners/event_on_period"
-			});
+			const bannerRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_banners/event_on_period`}, "unblock");
 			const unionEventType = "union_raid_event";
 			//const unionEventType = "union_raid_event_notice";
 			const currentEvent = bannerRes.body.data.find((e) => unionEventType === e.event_type);
@@ -3711,10 +3754,7 @@ function onGameApp() {
 			_unionEventId = currentEvent.event_id;
 			debugLog("union:" + _unionEventId);
 			//查詢活動關卡資訊
-			const battleRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_battles",
-				json: {kind: "event", event_id: _unionEventId}
-			});
+			const battleRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_battles`,json: {kind: "event", event_id: _unionEventId}}, "unblock");
 			//排除is_joined產生新陣列，並進行排序
 			const battlesData = battleRes?.body?.data || [];
 			const availableBattles = battlesData
@@ -3814,10 +3854,7 @@ function onGameApp() {
 			await refillApBpIfNeeded();//BP確認
 			await settleUnverifiedBattles();//已完成關卡處裡
 			//查詢活動關卡資訊
-			const battleRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_battles",
-				json: {kind: "event", event_id: _unionEventId}
-			});
+			const battleRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_battles`,json: {kind: "event", event_id: _unionEventId}}, "unblock");
 			//排除is_joined產生新陣列，並進行排序
 			const battlesData = battleRes?.body?.data || [];
 			const availableBattles = battlesData
@@ -3895,10 +3932,7 @@ function onGameApp() {
 	 */
 	async function robotMyRaidStart() {
 		try {
-			const raidRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_quests",
-				json: { type: "raid" }
-			});
+			const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_quests`,json: {type: "raid"}}, "unblock");
 			const questLists = raidRes?.body?.raid_quest_lists;			
 			if (!questLists) return true;
 
@@ -4033,7 +4067,7 @@ function onGameApp() {
 			//const raidRes = apiABattles.getInSessionRaidEventList();
 			let battleKind = "raid_request";
 			if (isEventRaids) battleKind = "in_session_event";
-			const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_battles`,json: {kind: battleKind}});
+			const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_battles`,json: {kind: battleKind}}, "unblock");
 			//數量檢查
 			const rCount = raidRes?.body?.max_record_count;
 			if (!rCount || rCount < 1) return false;
@@ -4112,11 +4146,9 @@ function onGameApp() {
 			//const apiABattles = kh.createInstance("apiABattles");
 			//const rescueRes = await apiABattles.getTwitterRaidRequestList();
 			const rescueRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_battles",
-				json: {
-					kind: "raid_rescue_code",
-					rescue_code: rescueCode}
-			});
+				url: `${kh.env.urlRoot}/a_battles`,
+				json: {kind: "raid_rescue_code",rescue_code: rescueCode}
+			}, "unblock");
 			//數量檢查
 			if (rescueRes.body.max_record_count < 1) return false;
 			//存在未結算的戰鬥
@@ -4173,7 +4205,7 @@ function onGameApp() {
 			const detailRes = await _httpClient.get({
 				url: `${kh.env.urlRoot}/a_quests/${questId}`,
 				json: { type: questType, account_id: _playerId }
-			});
+			}, "unblock");
 			const questIndex = questNum - 1; 
 			const firstEpisode = detailRes?.body?.episodes?.[questIndex];
 			if (!firstEpisode) return defaultData;
@@ -4324,10 +4356,7 @@ function onGameApp() {
 			//選擇隊伍
 			await apiParties.changeDeck(missionQuest.json.a_party_id);
 			//發送開始關卡請求
-			const response = await _httpClient.post({
-				url: missionQuest.url,
-				json: missionQuest.json
-			});
+			const response = await _httpClient.post({url: missionQuest.url,json: missionQuest.json}, "unblock");
 			const cannotProgressInfo = response?.body?.cannot_progress_info;
 			if (cannotProgressInfo) {
 				await showBattleFail(cannotProgressInfo);
@@ -4376,7 +4405,7 @@ function onGameApp() {
 			const response = await _httpClient.post({
 				url: kh.env.urlRoot + _battleStartInfo.url,
 				json: _battleStartInfo.json
-			});
+			}, "unblock");
 			const cannotProgressInfo = response?.body?.cannot_progress_info;
 			if (cannotProgressInfo) {
 				await showBattleFail(cannotProgressInfo);
@@ -4415,8 +4444,8 @@ function onGameApp() {
 			//const apiResponse = await apiABattles.getUnverifiedList();
 			const apiResponse = await _httpClient.get({
 				url: `${kh.env.urlRoot}/a_battles`,
-				json: { kind: "unverified" }
-			});
+				json: {kind: "unverified"}
+			}, "unblock");
 			const unverifiedRaids = apiResponse?.body?.data;
 			if (!unverifiedRaids || unverifiedRaids.length === 0) return;
 			//debugLog(JSON.stringify(unverifiedRaids, null, 2));
@@ -4427,8 +4456,8 @@ function onGameApp() {
 				//apiABattles.getBattleResult(battleId, questType);
 				await _httpClient.post({
 					url: `${kh.env.urlRoot}/a_battles/${battleId}/result`,
-					json: { "quest_type": questType }
-				});
+					json: {"quest_type": questType}
+				}, "unblock");
 				await sleep(50);
 			}
 		} catch (error) {
@@ -4444,9 +4473,7 @@ function onGameApp() {
 			if (!_httpClient) { debugLog("HTTP connection not initialized"); return; }
 			debugLog("execute luck gacha");
 			const luckCategoriesId = 1000060;//每期加10
-			const cat1Res = await _httpClient.get({
-				url: kh.env.urlRoot + "/gacha_categories"
-			});
+			const cat1Res = await _httpClient.get({url: `${kh.env.urlRoot}/gacha_categories`}, "unblock");
 			const hasTargetCategory = cat1Res.body.tabs.some(tab => 
 				tab.banners.some(banner => banner.category_id === luckCategoriesId)
 			);
@@ -4455,16 +4482,11 @@ function onGameApp() {
 				return;
 			}
 			//find the gacha_id
-			const cat2Res = await _httpClient.post({
-				url: kh.env.urlRoot + "/gacha_category/" + luckCategoriesId
-			});
+			const cat2Res = await _httpClient.post({url: `${kh.env.urlRoot}/gacha_category/${luckCategoriesId}`}, "unblock");
 			const gachaIdArray = cat2Res.body?.gacha_information?.map(info => info.gacha_id) || [];
 			for (const gachaId of gachaIdArray) {
 				try {
-					await _httpClient.post({
-						url: kh.env.urlRoot + "/a_gacha/normal",
-						json: { gacha_id: gachaId }
-					});
+					await _httpClient.post({url: `${kh.env.urlRoot}/a_gacha/normal`,json: { gacha_id: gachaId }}, "unblock");
 				} catch (error) {
 					debugLog("luck gacha fail: " + error);
 				}
@@ -4483,9 +4505,7 @@ function onGameApp() {
 			if (!_httpClient) { debugLog("HTTP connection not initialized"); return; }
 			debugLog("execute free gacha");
 			//獲取轉蛋分類
-			const freeRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/gacha_categories"
-			});
+			const freeRes = await _httpClient.get({url: `${kh.env.urlRoot}/gacha_categories`}, "unblock");
 			const tabs = freeRes.body && freeRes.body.tabs;
 			if (!tabs) return;
 			let free10CategoryId = "";
@@ -4506,9 +4526,7 @@ function onGameApp() {
 			}
 			//開始抽轉蛋
 			for (let i = 0; i < 11; i++) {
-				const catRes = await _httpClient.post({
-					url: kh.env.urlRoot + "/gacha_category/" + free10CategoryId
-				}, "unblock");
+				const catRes = await _httpClient.post({url: `${kh.env.urlRoot}/gacha_category/${free10CategoryId}`}, "unblock");
 				if (catRes.body.is_max_weapon_or_summon) {
 					debugLog("weapons or summon are full");
 					break;//跳出無限迴圈，結束動作
@@ -4517,7 +4535,7 @@ function onGameApp() {
 				if (catRes.body.rest_times) {
 					const gachaId = catRes.body.gacha_information[0].gacha_id;
 					await _httpClient.post({
-						url: kh.env.urlRoot + "/a_gacha/normal",
+						url: `${kh.env.urlRoot}/a_gacha/normal`,
 						json: { gacha_id: catRes.body.rest_times === 1 ? 191 : gachaId }
 					}, "unblock");
 					debugLog("free gacha OK (" + (i+1) + ")");
@@ -4544,9 +4562,7 @@ function onGameApp() {
 			}
 			debugLog("execute Raid gacha");
 			//取得活動ID
-			const eventRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_banners/event_on_period"
-			});
+			const eventRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_banners/event_on_period`}, "unblock");
 			const raidEventType = "raid_event";
 			const currentEvent = eventRes.body.data.find((e) => raidEventType === e.event_type);
 			if (!currentEvent) {
@@ -4556,9 +4572,9 @@ function onGameApp() {
 			const raidEventId = currentEvent.event_id;
 			//取得轉蛋分類
 			const catRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_gacha_categories",
+				url: `${kh.env.urlRoot}/a_gacha_categories`,
 				json: { "type": "event", "event_id": raidEventId }
-			});
+			}, "unblock");
 			const gachaCategory = catRes.body.data[0];
 			if (!gachaCategory || !gachaCategory.groups || !gachaCategory.groups[1]) {
 				debugLog("no raid gacha");
@@ -4568,14 +4584,14 @@ function onGameApp() {
 			const gachaId10 = gachaCategory.groups[1].gacha_id;
 			const infoRes = await _httpClient.get({
 				url: "/v1/events/raid_event/" + raidEventId
-			});
+			}, "unblock");
 			const basicInfo = infoRes.body.basic_info;
 			debugLog("name:" + basicInfo.title);
 			debugLog("description:" + basicInfo.description);
 			//查詢Raid券數量
 			const ticketRes = await _httpClient.get({
 				url: "/v1/a_events/raid_event/" + raidEventId
-			});
+			}, "unblock");
 			let amount = 0;
 			if (ticketRes.body && Array.isArray(ticketRes.body.event_tickets)) {
 				for (const ticket of ticketRes.body.event_tickets) {
@@ -4628,9 +4644,7 @@ function onGameApp() {
 			}
 			debugLog("execute due Raid gacha");
 			//取得過期但可領獎的活動
-			const eventRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_banners/event_after_period"
-			});
+			const eventRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_banners/event_after_period`}, "unblock");
 			const eventList = eventRes.body.data;
 			const raidEvent = eventList.find(item => item.event_type === 'raid_event_receive_reward');
 			if (!raidEvent) return;
@@ -4639,9 +4653,9 @@ function onGameApp() {
 			debugLog("event id: " + eventId);
 			//查詢該活動對應的轉蛋/抽獎卡池分類 ID
 			const gachaCatRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_gacha_categories",
+				url: `${kh.env.urlRoot}/a_gacha_categories`,
 				json: { type: "event", event_id : eventId }
-			});
+			}, "unblock");
 			const raidGachaData = gachaCatRes.body.data[0];
 			const _single_gacha = raidGachaData.gacha_information.find(item => item.gacha_count === 1);
 			const _ten_gacha = raidGachaData.gacha_information.find(item => item.gacha_count === 10);
@@ -4652,9 +4666,7 @@ function onGameApp() {
 			//十連抽的卡池 gacha_id
 			const raidGachaId10 = _ten_gacha ? _ten_gacha.gacha_id : '';
 			//獲取該活動的抽獎券數量
-			const eventDetailRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_events/raid_event/" + eventId
-			});
+			const eventDetailRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_events/raid_event/${eventId}`}, "unblock");
 			let eventTickets = eventDetailRes.body.event_tickets;
 			let eventTicketsCount = 0;
 			if (eventTickets && eventTickets.length > 0) {
@@ -4675,10 +4687,7 @@ function onGameApp() {
 				let ticketsCost = isMultiDraw ? 10 : 1;
 				let gachaId = isMultiDraw ? raidGachaId10 : raidGachaId1;
 				//抽抽
-				let itemRes = await _httpClient.post({
-					url: kh.env.urlRoot + "/a_gacha/event",
-					json: { gacha_id: gachaId }
-				});
+				let itemRes = await _httpClient.post({url: `${kh.env.urlRoot}/a_gacha/event`,json: {gacha_id: gachaId}}, "unblock");
 				eventTicketsCount -= ticketsCost;
 				debugLog("tickets count:" + eventTicketsCount);
 				//統計魔寶石
@@ -4748,7 +4757,7 @@ function onGameApp() {
 					try {
 						//查詢禮物資訊
 						const getRes = await _httpClient.get({
-							url: kh.env.urlRoot + "/a_presents_receive",
+							url: `${kh.env.urlRoot}/a_presents_receive`,
 							json: {type: presentType, page: 1, per_page: 10000}
 						}, "unblock");
 						const receivedInfo = getRes.body?.received_info;
@@ -4760,7 +4769,7 @@ function onGameApp() {
 						}
 						//收取禮物
 						const postRes = await _httpClient.post({
-							url: kh.env.urlRoot + "/a_presents_receive",
+							url: `${kh.env.urlRoot}/a_presents_receive`,
 							json: { present_ids: presentIds}
 						}, "unblock");
 						const postBody = postRes.body || {};
@@ -4791,7 +4800,7 @@ function onGameApp() {
 			const purchaseQueue = [];
 			//星紋幣,魔水晶交換
 			//11018 免費水晶
-			const coinShopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/1`});
+			const coinShopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/1`}, "unblock");
 			if (coinShopRes?.body?.catalogs) {
 				const freeJewelsProduct = coinShopRes.body.catalogs
 					.flatMap(catalog => catalog.products)
@@ -4812,7 +4821,7 @@ function onGameApp() {
 			//100100 哀憐結晶(Crystal of Pity)
 			//100101 勇敢結晶(Crystal of Valor)
 			//100201 剎那水晶(Instant Crystal)
-			const raidShopRes = await _httpClient.get({url: kh.env.urlRoot + "/shop/19"});
+			const raidShopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/19`}, "unblock");
 			if (raidShopRes?.body?.catalogs) {
 				const RAID_TARGET_IDS = [100001,100002,100003,100005,100099,100100,100101,100201];
 				const allRaidProducts = raidShopRes.body.catalogs.flatMap(c => c.products);
@@ -4835,7 +4844,7 @@ function onGameApp() {
 			//73021 公會勳章,神龍眼碎片
 			//75002 伏魔殿勳章,SSR確定轉蛋券
 			//75004 伏魔殿勳章,神龍眼
-			const eventShopRes = await _httpClient.get({url: kh.env.urlRoot + "/shop/7"});
+			const eventShopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/7`}, "unblock");
 			if (eventShopRes?.body?.catalogs) {
 				const EVENT_TARGET_IDS = [73001,73003,75002];
 				const allEventProducts = eventShopRes.body.catalogs.flatMap(c => c.products);
@@ -4851,7 +4860,7 @@ function onGameApp() {
 			}
 			//神龍眼
 			//41010 神龍眼碎片
-			const draconicShopRes = await _httpClient.get({url: kh.env.urlRoot + "/shop/10"});
+			const draconicShopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/10`}, "unblock");
 			if (draconicShopRes?.body?.catalogs) {
 				const draconicProduct = draconicShopRes.body.catalogs
 					.flatMap(catalog => catalog.products)
@@ -4867,7 +4876,7 @@ function onGameApp() {
 			//43046 道具,奧利哈鋼
 			//93049 道具,魔導秘本[封魔]
 			//93050 道具,魔導秘本[星辰]
-			const labroShopRes = await _httpClient.get({url: kh.env.urlRoot + "/shop/16"});
+			const labroShopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/16`}, "unblock");
 			if (labroShopRes?.body?.catalogs) {
 				const LABRO_TARGET_IDS = [43046,93049,93050];
 				const allLabroProducts = labroShopRes.body.catalogs.flatMap(c => c.products);
@@ -4885,7 +4894,7 @@ function onGameApp() {
 			//201001 真愛聖結晶
 			//201003 真哀聖結晶
 			//201005 真勇聖結晶
-			const awakenshopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/21`});
+			const awakenshopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/21`}, "unblock");
 			if (awakenshopRes?.body?.catalogs) {
 				const AWAKEN_TARGET_IDS = [201001,201003,201005];
 				const allAwakenProducts = awakenshopRes.body.catalogs.flatMap(c => c.products);
@@ -4901,7 +4910,7 @@ function onGameApp() {
 			}
 			//幻獸寶珠
 			//61011 神龍眼碎片
-			const eidolonshopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/6`});
+			const eidolonshopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/6`}, "unblock");
 			if (eidolonshopRes?.body?.catalogs) {
 				const draconicProduct = eidolonshopRes.body.catalogs
 					.flatMap(catalog => catalog.products)
@@ -4919,7 +4928,7 @@ function onGameApp() {
 			}
 			for (const item of purchaseQueue) {
 				try {
-					await _httpClient.post({url: `${kh.env.urlRoot}/shop`, json: item});
+					await _httpClient.post({url: `${kh.env.urlRoot}/shop`, json: item}, "unblock");
 					debugLog(`Exchange successful for product ID: ${item.product_id}`);
 					await sleep(50);
 				} catch (error) {
@@ -4950,8 +4959,8 @@ function onGameApp() {
 		try {
 			//取得武器清單
 			const response = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_weapons",
-				json: { page: 1, per_page: 1000 }
+				url: `${kh.env.urlRoot}/a_weapons`,
+				json: {page: 1, per_page: 1000}
 			}, "unblock");
 			const weaponList = response?.body?.data;
 			if (!weaponList || weaponList.length === 0) {
@@ -4972,7 +4981,7 @@ function onGameApp() {
 			while (targetWeaponIds.length > 0) {
 				const batch = targetWeaponIds.splice(0, 20);
 				await _httpClient.post({
-					url: kh.env.urlRoot + "/a_weapons_reduct",
+					url: `${kh.env.urlRoot}/a_weapons_reduct`,
 					json: {ids: batch}
 				}, "unblock");
 				if (targetWeaponIds.length > 0) {
@@ -4994,7 +5003,7 @@ function onGameApp() {
 			const response = await _httpClient.get({
 				url: kh.env.urlRoot + "/a_summons",
 				json: {display_filter_name: "reduct_summon", selectable_base_filter: "reductable", page: 1, per_page: 100000}
-			});
+			}, "unblock");
 			const summonList = response?.body?.data;
 			if (!summonList || summonList.length === 0) {
 				return;
@@ -5040,7 +5049,7 @@ function onGameApp() {
 					const response = await _httpClient.get({
 						url: kh.env.urlRoot + "/a_accessories/",
 						json: {display_filter_name: "book_acce",page: pageIndex, per_page: 100000, panels_per_page: 18}
-					});
+					}, "unblock");
 					if (response && response.body && response.body.data) {
 						const accessoriesList = response.body.data;
 						if (accessoriesList.length === 0) break;
@@ -5178,7 +5187,7 @@ function onGameApp() {
 					per_page: 100000,
 					display_filter_name: "episode_chara"
 				}
-			});
+			}, "unblock");
 			const characters = charRes.body.data.filter(c => c.unread_episode);
 			if (characters.length > 0) {
 				//取得未閱讀角色劇情
@@ -5190,7 +5199,7 @@ function onGameApp() {
 								type: "harem-character",
 								character_id: character.character_id
 							}
-						});
+						}, "unblock");
 						//篩選出尚未通關的劇情
 						const quests = questRes.body.data.filter(q => !q.is_cleared && q.a_quest_id);
 						allEpisodes.push(...quests);
@@ -5208,7 +5217,7 @@ function onGameApp() {
 					per_page: 100000,
 					display_filter_name: "episode_summ"
 				}
-			});
+			}, "unblock");
 			const summons = summonRes.body.data.filter(c => c.unread_episode);
 			//取得未閱讀幻獸劇情
 			if (summons.length > 0) {
@@ -5220,7 +5229,7 @@ function onGameApp() {
 								type: "harem-summon",
 								summon_id: summon.summon_id
 							}
-						});
+						}, "unblock");
 						//篩選出尚未通關的劇情
 						const quests = questRes.body.data.filter(q => !q.is_cleared && q.a_quest_id);
 						allEpisodes.push(...quests);
@@ -5237,7 +5246,7 @@ function onGameApp() {
 					page: 1,
 					per_page: 100000
 				}
-			});
+			}, "unblock");
 			const souls = jobRes.body.data.filter(c => c.unread_episode);
 			if (souls.length > 0) {
 				for (const soul of souls) {
@@ -5248,7 +5257,7 @@ function onGameApp() {
 								type: "harem-job",
 								job_id: soul.job_id
 							}
-						});
+						}, "unblock");
 						//篩選出尚未通關的劇情
 						const quests = questRes.body.data.filter(q => !q.is_cleared && q.a_quest_id);
 						allEpisodes.push(...quests);
@@ -5265,7 +5274,7 @@ function onGameApp() {
 					page: 1,
 					per_page: 100000
 				}
-			});
+			}, "unblock");
 			const skins = skinsRes.body.data.filter(c => c.unread_episode);
 			if (skins.length > 0) {
 				for (const skin of skins) {
@@ -5276,7 +5285,7 @@ function onGameApp() {
 								type: "harem-character",
 								character_id: skin.id
 							}
-						});
+						}, "unblock");
 						const quests = questRes.body.data.filter(q => !q.is_cleared && q.a_quest_id);
 						allEpisodes.push(...quests);
 					} catch (error) {
@@ -5302,7 +5311,7 @@ function onGameApp() {
 					await _httpClient.post({
 						url: kh.env.urlRoot + "/a_quests/" + questId + "/start",
 						json: { type: questType }
-					});
+					}, "unblock");
 					//完成劇情
 					await _httpClient.post({
 						url: kh.env.urlRoot + "/a_battles/" + battleId + "/result",
@@ -5353,24 +5362,14 @@ function onGameApp() {
 		try {
 			//設置神姬過濾條件
 			await _httpClient.post({
-				url: kh.env.urlRoot + "/a_players/me/display_filter/book_chara",
-				json: {
-					rarity: [],
-					element_type: [],
-					character_type: [],
-					proper_weapon_type: []
-				}
-			});
+				url: `${kh.env.urlRoot}/a_players/me/display_filter/book_chara`,
+				json: {rarity: [],element_type: [],character_type: [],proper_weapon_type: []}
+			}, "unblock");
 			//獲取持有的神姬列表
 			const charactersRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_characters",
-				json: {
-					display_filter_name: "book_chara",
-					page: 1,
-					per_page: 100000,
-					from_tower: false
-				}
-			});
+				url: `${kh.env.urlRoot}/a_characters`,
+				json: {display_filter_name: "book_chara", page: 1, per_page: 100000, from_tower: false}
+			}, "unblock");
 			const charas = [];
 			if (charactersRes && charactersRes.body && charactersRes.body.data) {
 				charactersRes.body.data.forEach(function (item) {
@@ -5384,9 +5383,7 @@ function onGameApp() {
 				debugLog("load " + (i+1) + " | " + charas.length)
 				const chara = charas[i];
 				//查詢神姬詳細資料
-				const detailRes = await _httpClient.get({
-					url: kh.env.urlRoot + "/a_characters/" + chara
-				}, "unblock");
+				const detailRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_characters/${chara}`}, "unblock");
 				if (detailRes && detailRes.body) {
 					//名稱,稀有度,id
 					const himeData = {
@@ -6107,9 +6104,9 @@ function onGameApp() {
 	async function gatItemApBp() {
 		try {
 			const e = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_items",
+				url: `${kh.env.urlRoot}/a_items`,
 				json: { "type": "cure_evolution", page: 1, per_page: 100 }
-			});
+			}, "unblock");
 			if (e && e.body && e.body.data) {
 				_apItemId = e.body.data[1].a_item_id;
 				_bpItemId = e.body.data[3].a_item_id;
@@ -6144,9 +6141,7 @@ function onGameApp() {
 	 */
 	async function refillApIfNeeded() {
 		try {
-			const apRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_players/me/quest_points"
-			}, "unblock");
+			const apRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_players/me/quest_points`}, "unblock");
 			const apItemCount = apRes.body.quest_points.ap;
 			if (apItemCount < 100) await increaseAP();
 		} catch(error) {
@@ -6169,11 +6164,9 @@ function onGameApp() {
 	 */
 	async function refillBpIfNeeded() {
 		try {
-			const bpRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_players/me/quest_points"
-			}, "unblock");
+			const bpRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_players/me/quest_points`}, "unblock");
 			const bpItemCount = bpRes.body.quest_points.bp;
-			 if (bpItemCount < 10) await increaseBP();
+			if (bpItemCount < 10) await increaseBP();
 		} catch(error) {
 			debugLog("refillBpIfNeeded: " + error);
 		}
@@ -6604,7 +6597,7 @@ function onGameApp() {
 			if (_battleWorld.battleUI.SummonButton && _battleWorld.battleUI.SummonButton._widget && _battleWorld.battleUI.SummonButton._widget.isEnabled()) {
 				if (_battleWorld.battleUI.SummonPanelGroup) {
 					const panelList = _battleWorld.battleUI.SummonPanelGroup.panelList;
-					//應該要依元素或功能排序後發動, 但是還沒寫
+					//簡易版,使用第一支能用的幻獸
 					for (const summon of panelList) {
 						if (summon.isUsable()) {
 							_battleWorld.summonAttack(summon.index);
@@ -6675,7 +6668,6 @@ function onGameApp() {
 				if (await isAttackButtonReady()) break;
 				await sleep(100);
 			}
-			await sleep(100);
 		} catch(error) {
 			debugLog("waitForAttackButton: ", error);
 		}
@@ -6714,7 +6706,7 @@ function onGameApp() {
 			_battleWorld = kh.createInstance("battleWorld");
 			_currentStage = _battleWorld.stage._currentStage;
 			_maxStage = _battleWorld.stage._maxStage;
-			sendTurnText(`(${_currentStage}|${_maxStage}) 1`);
+			sendTurnText(`(${_currentStage}/${_maxStage}),1`);
 			//由戰鬥場次的ID判斷是否為新的戰鬥
 			let currentBattleId = currentScene.getBattleId();
 			if (_battleId === currentBattleId) {
@@ -6777,7 +6769,7 @@ function onGameApp() {
 			//非戰鬥狀態退出
 			if (_currentSceneName !== "battle") return;
 			if (typeof cc.director.getRunningScene().sceneName !== "undefined") return;
-			//注意,過場時battleWorld是空的
+			//注意,換階段時battleWorld是空的
 			_battleWorld = kh.createInstance("battleWorld");
 			const battleUI = _battleWorld?.battleUI;
 			if(battleUI) {
@@ -6795,9 +6787,7 @@ function onGameApp() {
 						}
 					}
 				} else if (await isNextButtonReady()) {
-					//檢查Next button
-					const btnNext = _battleWorld.battleUI.NextButton;
-					btnNext._onTouchEvent(btnNext._widget, ccui.Widget.TOUCH_ENDED);
+					_battleWorld.battleUI.NextButton.emulateNextButtonPress();
 				} else {
 					await onAutoBattling();//自動攻擊中
 					if (await hasNoLivingCharacters()) {
@@ -6861,194 +6851,142 @@ function onGameApp() {
 	/**
 	 * @description 自訂技能施放, 幻獸->黃->綠->藍->優先紅->紅->減CT技->吃藥->攻擊
 	 */
+	//{技能顏色: 預設優先級}
+	const SKILL_COLOR_PRIORITY = {
+		"yellow": 20,
+		"green": 24,
+		"blue": 28,
+		"red": 32
+	};
+	//{英靈ID: {技能索引: 優先級} }
+	const SOUL_SKILL_PRIORITY_MAP = {
+		43: { 0: 10, 1: 12, 2: 40, 3: 14 },//愛迪生
+		50: { 0: 10, 1: 42, 2: 43 }//貝多芬
+	}
+	//{神姬ID: {技能索引: 優先級} }, 優先紅30, 減CT技(個人)36, 減CT技(全部)40, 不使用99
+	const CHAR_SKILL_PRIORITY_MAP = {
+		5167: { 0: 31 },//[戦友想う刃]ルー
+		5230: { 2: 36 },//[決意の護衛者]ラー
+		5243: { 3: 19 },//[聖夜の約束]フレイヤ
+		5248: { 2: 36 },//[百花繚乱の領袖]バアル
+		5249: { 3: 36 },//夢見る怠惰]アマナー
+		5277: { 1: 30 },//[極光の聖戦士]アテン
+		5300: { 2: 40 },//[贈愛の爛漫]シャイターン
+		5311: { 2: 36 },//[仔猫奮迅]キャスパリーグ
+		5327: { 2: 36 },//呂布
+		5351: { 0: 36 },//[愛怨の魔女]ヘーラー
+		5355: { 0: 30, 1: 31 },//[夢贈る堕天使]ベレヌス
+		5373: { 0: 30, 1: 31 },//神代の始祖]イヴ
+		5389: { 2: 40 },//[或る夏の一幕]ファレグ
+		5392: { 0: 36 },//玉泉日和子
+		5397: { 3: 36 },//[蒼雷の庇護者]ステュクス
+		5401: { 3: 36 },//[喫茶浪漫]アマナー
+		5417: { 3: 36 },//[惑溺のふわもふ]モイラ
+		5424: { 0: 30, 1: 30, 2: 36, 3: 37},//[麗衣の代理人]アモン
+		5426: { 3: 36 },//[輝炎の剣]オク
+		5427: { 3: 36 },//[月華の舞巫女]アリサ
+		5435: { 2: 40 },//アルテミス[反心想]
+		5441: { 0: 30, 1: 30 },//[深潜の麗女]アデーレ
+		5444: { 0: 36 },//[波戯の愛霹]シャイターン
+		5454: { 0: 30, 3: 40 },//[神威明星]ルシファー
+		5459: { 3: 36 },//[省察の先に]茨木童子
+		5471: { 0: 30 },//[正月福娘]フィア
+		5472: { 0: 30 },//[砂漠の湯あみ]ジェフティ
+		5486: { 0: 30 },//[HELIX]テトラ
+		9004: { 2: 35, 3: 36 },//バアル[神想真化]
+		9006: { 0: 30, 3: 40 },//アモン[神想真化]
+		9014: { 0: 30 }//ハデス[神想真化]
+	};
 	async function customAbilityActivation() {
 		try {
 			const battleWorld = kh.createInstance("battleWorld");
 			if (!battleWorld) return;
-			//檢查可用幻獸
-			const summonList = battleWorld?.battleUI?.SummonPanelGroup?.panelList || [];
-			if (summonList.length > 0) {
-				const targetSummon = summonList.find(summon => summon.isUsable());
-				if (targetSummon) {
-					targetSummon.setLocked(true);//提早鎖定
-					try {
-						await battleWorld.summonAttackExecute(targetSummon.index);
-					} catch (error) {
-						if (error && error.bufferedInputLength >= 2) {
-							debugLog("summonAttackExecute fail");
-						}
+			const characterList = battleWorld.characterList || [];
+			let jonIndex = -1;
+			let beethovenMode = false;
+			let beethovenRedCount = 0;
+			let beethovenGreendCount = 0;
+			let beethovenYellowCount = 0;
+			let beethovenBlueCount = 0;
+
+			for (let i = 0; i < characterList.length; i++) {
+				if (characterList[i].isJob) {
+					jonIndex=i;
+					//貝多芬時取得身上旋律數量
+					if (character.id === 50) {
+						beethovenMode = true;
+						 const members = battleWorld?.battleStatus?._partyMembers;
+						 if (members && members[i] && members[i].status_effects) {
+							const effects = partyMembers[i].status_effects;
+							for (const effect of effects) {
+								switch (effect.id) {
+									case 13848: beethovenRedCount=effect.level;break;
+									case 13849: beethovenGreendCount=effect.level;break;
+									case 13850: beethovenYellowCount=effect.level;break;
+									case 13851: beethovenBlueCount=effect.level;break;
+								}
+							}
+						 }
 					}
-					await sleep(100);
-					return;
+				}
+			} 
+			//英靈存在時檢查可用幻獸
+			if (jonIndex > -1) {
+				const summonList = battleWorld?.battleUI?.SummonPanelGroup?.panelList || [];
+				if (summonList.length > 0) {
+					const targetSummon = summonList.find(summon => summon.isUsable());
+					if (targetSummon) {
+						targetSummon.setLocked(true);//提早鎖定
+						try {
+							await battleWorld.summonAttackExecute(targetSummon.index);
+						} catch (error) {
+							if (error && error.bufferedInputLength >= 2) {
+								debugLog("summonAttackExecute fail");
+							}
+						}
+						await sleep(200);
+						return;
+					}
 				}
 			}
 			//取得場上可用技能
-			const characterList = battleWorld.characterList || [];
 			const abilityList = battleWorld.characterAbilityList || [];
 			const abilityArray = [];
 			for (let i = 0; i < characterList.length; i++) {
 				const character = characterList[i];
-				if (!character) continue;
-				if (character.hp === 0) continue;
-                //debugLog(`chara:${character.name}, id:${character.id}`);
+				if (!character || character.hp === 0) continue;
+				//debugLog(`chara:${character.name}, id:${character.id}`);
 				const skills = abilityList[i];
 				if (!skills || !Array.isArray(skills)) continue;
+				const characterId = character.id;
 
 				for (const skill of skills) {
 					if (!skill._abilityData.ready) continue;
-					let thePriority = 99;//越小越優先施放
-					//一般準則
-					switch (skill._abilityData.color) {
-						case "yellow":thePriority=20;break;
-						case "green":thePriority=24;break;
-						case "blue":thePriority=28;break;
-						case "red":thePriority=32;break;
-					}
-                    //debugLog(`idx:${skill._index}, color:${skill._abilityData.color}`);
-					//特殊規則
+					if (skill._abilityData.is_banned) continue;
+					//debugLog(`idx:${skill._index}, color:${skill._abilityData.color}`);
+					//一般顏色的準則,越小越優先施放
+					let thePriority = SKILL_COLOR_PRIORITY[skill._abilityData.color] || 99;
+					//角色特殊規則
+					const skillIdx = skill._index;
+
 					if (character.isJob) {
-						if (character.id === 34) {
-							//愛迪生
-							switch (skill._index) {
-							case 0:thePriority=10;break;
-							case 1:thePriority=12;break;
-							case 2:thePriority=40;break;
-							case 3:thePriority=14;break;
-							}
-						}
-						if (character.id === 50) {
-							//貝多芬
-							switch (skill._index) {
-							case 0:thePriority=10;break;
-							case 1:thePriority=42;break;
-							case 2:thePriority=43;break;
-							}
+						if (SOUL_SKILL_PRIORITY_MAP[characterId] && SOUL_SKILL_PRIORITY_MAP[characterId][skillIdx]) {
+							thePriority = SOUL_SKILL_PRIORITY_MAP[characterId][skillIdx];
 						}
 					} else {
-						//優先紅30, 減CT技(個人)36, 減CT技(全部)40, 不使用99
-						switch (character.id) {
-							case 5167://[戦友想う刃]ルー
-								if (skill._index === 0) thePriority = 31;
-								break;
-							case 5230://[決意の護衛者]ラー
-								if (skill._index === 2) thePriority = 36;
-								break;
-							case 5243://[聖夜の約束]フレイヤ
-								if (skill._index === 3) thePriority = 19;
-								break;
-							case 5248://[百花繚乱の領袖]バアル
-								if (skill._index === 2) thePriority = 36;
-								break;
-							case 5249://[夢見る怠惰]アマナー
-								if (skill._index === 3) thePriority = 36;
-								break;
-							case 5277://[極光の聖戦士]アテン
-								if (skill._index === 1) thePriority = 30;
-								break;
-							case 5300://[贈愛の爛漫]シャイターン
-								if (skill._index === 2) thePriority = 40;
-								break;
-							case 5311://[仔猫奮迅]キャスパリーグ
-								if (skill._index === 2) thePriority = 36;
-								break;
-							case 5327://呂布
-								if (skill._index === 2) thePriority = 36;
-								break;
-							case 5351://[愛怨の魔女]ヘーラー
-								if (skill._index === 0) thePriority = 36;
-								break;
-							case 5355://[夢贈る堕天使]ベレヌス
-								switch (skill._index) {
-									case 0: thePriority = 30; break;
-									case 1: thePriority = 31; break;
-								}
-								break;
-							case 5373://[神代の始祖]イヴ
-								switch (skill._index) {
-									case 0: thePriority = 30; break;
-									case 1: thePriority = 31; break;
-								}
-								break;
-							case 5389://[或る夏の一幕]ファレグ
-								if (skill._index === 2) thePriority = 40;
-								break;
-							case 5392://玉泉日和子
-								if (skill._index === 0) thePriority = 36;
-								break;
-							case 5397://[蒼雷の庇護者]ステュクス
-								if (skill._index === 3) thePriority = 36;
-								break;
-							case 5401://[喫茶浪漫]アマナー
-								if (skill._index === 3) thePriority = 36;
-								break;
-							case 5417://[惑溺のふわもふ]モイラ
-								if (skill._index === 3) thePriority = 36;
-								break;
-							case 5424://[麗衣の代理人]アモン
-								switch (skill._index) {
-									case 0: thePriority = 30; break;
-									case 1: thePriority = 30; break;
-									case 2: thePriority = 36; break;
-									case 3: thePriority = 37; break;
-								}
-								break;
-							case 5426://[輝炎の剣]オク
-								if (skill._index === 3) thePriority = 36;
-								break;
-							case 5427://[月華の舞巫女]アリサ
-								if (skill._index === 3) thePriority = 36;
-								break;
-							case 5435://アルテミス[反心想]
-								if (skill._index === 2) thePriority = 40;
-								break;
-							case 5441://[深潜の麗女]アデーレ
-								switch (skill._index) {
-									case 0: thePriority = 30; break;
-									case 1: thePriority = 30; break;
-								}
-								break;
-							case 5444://[波戯の愛霹]シャイターン
-								if (skill._index === 0) thePriority = 36;
-								break;
-							case 5454://[神威明星]ルシファー
-								switch (skill._index) {
-									case 0: thePriority = 30; break;
-									case 3: thePriority = 40; break;
-								}
-								break;
-							case 5459://[省察の先に]茨木童子
-								if (skill._index === 3) thePriority = 36;
-								break;
-							case 5471://[正月福娘]フィア
-								if (skill._index === 0) thePriority = 30;
-								break;
-							case 5472://[砂漠の湯あみ]ジェフティ
-								if (skill._index === 0) thePriority = 30;
-								break;
-							case 5486://[HELIX]テトラ
-								if (skill._index === 0) thePriority = 30;
-								break;
-							case 9004://バアル[神想真化]
-								switch (skill._index) {
-									case 2: thePriority = 35; break;
-									case 3: thePriority = 36; break;
-								}
-								break;
-							case 9006://アモン[神想真化]
-								switch (skill._index) {
-									case 0: thePriority = 30; break;
-									case 3: thePriority = 40; break;
-								}
-								break;
-							case 9014://ハデス[神想真化]
-								if (skill._index === 0) thePriority = 30;
-								break;
+						if (beethovenMode) {
+							//come soon
+						} else {
+							if (CHAR_SKILL_PRIORITY_MAP[characterId] && CHAR_SKILL_PRIORITY_MAP[characterId][skillIdx]) {
+								thePriority = CHAR_SKILL_PRIORITY_MAP[characterId][skillIdx];
+							}
 						}
 					}
+
 					if (thePriority === 99) continue;
 					abilityArray.push({
 						character_index: i,//角色索引
-						ability_index: skill._index,//技能索引
+						ability_index: skillIdx,//技能索引
 						color: skill._abilityData.color,//技能顏色
 						selectable: skill._abilityData.party_member_selectable,//需要指定成員
 						selectableType: skill._abilityData.party_member_selectable_type,//指定類型
@@ -7063,7 +7001,7 @@ function onGameApp() {
 				for (const abilityItem of abilityArray) {
 					const character = characterList[abilityItem.character_index];
 					const abilityPos = abilityItem.ability_index;
-                    //debugLog(`chara:${abilityItem.character_index}, idx:${abilityItem.ability_index}, color:${abilityItem.color}`);
+					//debugLog(`chara:${abilityItem.character_index}, idx:${abilityItem.ability_index}, color:${abilityItem.color}`);
 					let targetChara = null;
 					if (abilityItem.selectable) {//取得技能指定目標
 						const targetIndex = getPartyTarget(abilityItem.selectableType);
@@ -7073,7 +7011,7 @@ function onGameApp() {
 					try {//施放技能
 						const bufferedInput = kh.createInstance("AbilityBufferedInput", [character, abilityPos, attackTargetPos, targetChara]);
 						await battleWorld._useAbility(bufferedInput._character,bufferedInput._abilityPos,bufferedInput._attackTargetPos,bufferedInput._abilityTarget);
-						await sleep(100);
+						await sleep(200);
 					} catch(error2) {
 						if (error2.bufferedInputLength === 0) {
 							//執行錯誤,先忽略技能
