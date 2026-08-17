@@ -383,7 +383,7 @@ function onGameFrame() {
 			//控制台欄位
 			const debugRightPanel = document.createElement("div");
 			debugRightPanel.style.cssText = `
-				width: 160px; height: 100%; padding: 6px 12px;
+				width: 100px; height: 100%; padding: 6px 12px;
 				display: flex; flex-direction: column; justify-content: space-between;
 				box-sizing: border-box; background: rgba(25, 25, 30, 0.4);
 				border-right: 1px solid rgba(255, 200, 0, 0.2);
@@ -469,20 +469,6 @@ function onGameFrame() {
 			packetLogLabel.style.width = "auto";
 			packetLogLabel.style.height = "auto";
 			rightRow2.appendChild(packetLogLabel);
-			//檢視戰鬥開關
-			const battleLogCheckbox = document.createElement("input");
-			battleLogCheckbox.type = "checkbox";
-			battleLogCheckbox.checked = GM_getValue("isBattleLoggingEnabled", false);
-			const battleLogLabel = createToggleSwitch(battleLogCheckbox, "戰鬥", function() {
-				GM_setValue("isBattleLoggingEnabled", this.checked);
-			});
-			//微調開關尺寸與外觀
-			battleLogLabel.style.fontSize = "9px";
-			battleLogLabel.style.color = "#ccc";
-			battleLogLabel.style.gap = "6px";
-			battleLogLabel.style.width = "auto";
-			battleLogLabel.style.height = "auto";
-			rightRow2.appendChild(battleLogLabel);
 
 			debugRightPanel.appendChild(rightRow2);
 			//清空LOG按鈕
@@ -1423,7 +1409,7 @@ function onGameFrame() {
 	async function initConnectingObserver() {
 		_shieldElement = await waitForElement('#shield');//尋找Connecting畫面
 		if (_shieldElement) {
-			appendDebugLog("get shield!");
+			appendDebugLog("get shield ok");
 		} else {
 			appendDebugLog("no shield!");
 			return;
@@ -1671,7 +1657,6 @@ function onGameApp() {
 	let _autoReloadEnabled = GM_getValue("isAutoReloadEnabled", false);//自動戰鬥時閒置重整(防卡)
 	const _autoReloadWaiting = 10000;//閒置時間
 	let _logPacketsEnabled = GM_getValue("isPacketLoggingEnabled", false);//輸出傳輸資訊
-	let _logBattleEnabled = GM_getValue("isBattleLoggingEnabled", false);//輸出戰鬥資訊
 	let _connectingVisible = GM_getValue("hideConnectingScreen", false);//Connecting畫面
 	let _errorPopupVisible = GM_getValue("disableErrorPopups", false);//Error彈窗
 	let _enemyNumEnabled = GM_getValue("showEnemyHpValues", false);//顯示敵方血量數字
@@ -1681,6 +1666,8 @@ function onGameApp() {
 	let _isTaskProcessing = false;//任務執行鎖
 	let _runningScene = null;//暫存場景物件
 	let _currentSceneName = "unknown";//現在場景名稱
+	let _currentStage = 0;//現在階段索引
+	let _maxStage = 0;//最大階段
 	let _sceneTimeoutId = null;//場景定時器
 	let _httpClient = null;//HTTP連接
 	let _battleWorld = null;//戰鬥場景
@@ -1697,9 +1684,6 @@ function onGameApp() {
 	let _rankingTimestamp = 0;//暫存更新名單的時間
 	let _raidPointsDelayOk = false;//是否已關閉功績顯示
 	const _minimumDamage = 1000000;//戰鬥紀錄可顯示的最小傷害
-
-	const _jobIdCache = {};//存放英靈 a_job_id 對應 job_id 的字典檔快取
-	const _himeIdCache = {};//存放神姬 a_character_id 對應 character_id 的字典檔快取
 
 	//daily robot資料區
 	const _dailyQuests = [];//待處理的每日戰鬥關卡
@@ -1904,9 +1888,6 @@ function onGameApp() {
 		GM_addValueChangeListener("isPacketLoggingEnabled", function(key, oldValue, newValue, remote) {
 			_logPacketsEnabled = newValue;//Http傳輸資訊
 		});
-		GM_addValueChangeListener("isBattleLoggingEnabled", function(key, oldValue, newValue, remote) {
-			_logBattleEnabled = newValue;//實時戰鬥LOG更新
-		});
 		GM_addValueChangeListener("scenarioStart", function() {
 			onScenario();//進入劇情
 		});
@@ -2101,8 +2082,6 @@ function onGameApp() {
 				kh.Enemy.prototype.ENTER_BATTLE_ANIMATION_SPEED=0;
 			}
 			debugLog('Animation Delay: ' + _animationDelay);
-			//獲取遊戲語言
-			getGameLanguage();
 			//彈窗攔截
 			await hookAllPopups();
 			//繼續設定
@@ -2332,7 +2311,7 @@ function onGameApp() {
 			kh.Turn.prototype.setTurnNumberRaw = kh.Turn.prototype.setTurnNumber;
 			kh.Turn.prototype.setTurnNumber = function (t) {
 				const result = originalMethodSetTurnNumber.call(this, t);
-				sendTurnText(t+1);
+				sendTurnText(`(${_currentStage}|${_maxStage}) ${t+1}`);
 				return result;
 			}	
 			//攔截自己的戰鬥指令,檢測自動戰鬥中卡住的情況
@@ -2345,20 +2324,6 @@ function onGameApp() {
 			const originalMethodAttack = kh.BattleWorld.prototype.attack;
 			kh.BattleWorld.prototype.attackRaw = kh.BattleWorld.prototype.attack;
 			kh.BattleWorld.prototype.attack = function() {_playerActionTime = new Date();return originalMethodAttack.call(this);}
-			//顯示Raid中自己的動作
-			const origMethodEnqueueOwnScenario = kh.RaidScenarioPlayer.prototype.enqueueOwnScenario;
-			kh.RaidScenarioPlayer.prototype.enqueueOwnScenarioRaw = kh.RaidScenarioPlayer.prototype.enqueueOwnScenario;
-			kh.RaidScenarioPlayer.prototype.enqueueOwnScenario = async function(scenarioData) {
-				if (_logBattleEnabled) {onRaidActionSelf(scenarioData);}
-				return origMethodEnqueueOwnScenario.apply(this, [scenarioData]);
-			}
-			//顯示Raid中隊友的動作
-			const origMethodPostLog = kh.RaidMessageHandler.prototype._postLog;
-			kh.RaidMessageHandler.prototype._postLogRaw = kh.RaidMessageHandler.prototype._postLog;
-			kh.RaidMessageHandler.prototype._postLog = async function(message) {
-				if (_logBattleEnabled) {onRaidActionTeammate(message);}
-				return origMethodPostLog.apply(this, [message]);
-			}
 			//敵方血量顯示
 			const enemyStatusBarProto = kh.EnemyStatusBar.prototype;
 			//初始化紀錄
@@ -2440,6 +2405,17 @@ function onGameApp() {
 				const originalSetThreshold = RepoPrototype.setThreshold;
 				RepoPrototype.setThreshold = function(threshold) {return originalSetThreshold.call(this, -1);};
 			}
+			setTimeout(initCache, 1200);
+			debugLog('initialization Part4 starting...');
+		} catch(error) {
+			debugLog("initBattleObservers: " + error);
+		}
+	}
+	/**
+	 * @description 初始化步驟, 取得遊戲數據快取
+	*/
+	async function initCache() {
+		try {
 			//取得玩家ID
 			const apiPlayers = kh.createInstance("apiAPlayers");
 			if (apiPlayers) {
@@ -2447,19 +2423,18 @@ function onGameApp() {
 				_playerId = playerRes.body.a_player_id;
 				//_playerId = playerRes.body.dmm_id;
 				const playerName = playerRes.body.name;
-				debugLog(`current: ${playerName}(${_playerId})`);
+				debugLog(`player: ${playerName}(${_playerId})`);
 			} else {
 				debugLog("no apiPlayers!");
 			}
-			await initApBp();//取得補充AP|BP的道具ID
-			await fetchAndCacheJobData();//快取英靈AID
-			await fetchAndCacheHimeData();//快取神姬AID
+			getGameLanguage();//獲取遊戲語言
+			await gatItemApBp();//取得補充AP|BP的道具ID
 			//顯示現在場景
 			const currentSceneName = cc.director._runningScene.sceneName;
 			sendSceneText(currentSceneName ?? "*");
 			debugLog('initialization ok');
 		} catch(error) {
-			debugLog("initBattleObservers: " + error);
+			debugLog("initCache: " + error);
 		}
 	}
 	/**
@@ -2533,30 +2508,22 @@ function onGameApp() {
 	 * @description 傳送 LOG 文字至網站頁面顯示
 	 * @param {string} msg 
 	 */
-	function debugLog(msg) {
-		window.parent.postMessage({type:"game_log",message: msg},"*");
-	}
+	function debugLog(msg) {window.parent.postMessage({type:"game_log",message: msg},"*");}
 	/**
 	 * @description 傳送關卡狀態文字至網站頁面顯示
 	 * @param {string} msg 
 	 */
-	function sendQuestText(msg) {
-		window.parent.postMessage({type:"game_quest", message: msg}, "*");
-	}
+	function sendQuestText(msg) {window.parent.postMessage({type:"game_quest", message: msg}, "*");}
 	/**
 	 * @description 傳送回合文字至網站頁面顯示
 	 * @param {string|number} msg 
 	 */
-	function sendTurnText(msg) {
-		window.parent.postMessage({type:"game_turn", message: msg}, "*");
-	}
+	function sendTurnText(msg) {window.parent.postMessage({type:"game_turn", message: msg}, "*");}
 	/**
 	 * @description 傳送場景狀態文字至網站頁面顯示
 	 * @param {string} msg 
 	 */
-	function sendSceneText(msg) {
-		window.parent.postMessage({type:"game_scene", message: msg}, "*");
-	}
+	function sendSceneText(msg) {window.parent.postMessage({type:"game_scene", message: msg}, "*");}
 	/**
 	 * @description 傳送中斷輔助機器人的指令
 	 */
@@ -2912,19 +2879,13 @@ function onGameApp() {
 			//fetchElementQuest();
 			//fetchMaterialQuest();
 			//fetchAccessoryQuest();
-			//await exportAllSummonData() ;
-			//await exportAllSoulData();
-			//await exportAllWeaponData();
-			//await customAbilityActivation();
 
-			fetchAndCacheHimeData();
-
-			// const rescueId = await battleGetRescueId();//救援碼
-			// if (rescueId) {
-			// 	sendStringToFirebase(rescueId);
-			// } else {
-			// 	debugLog("no rescue id");
-			// }
+			const rescueId = await battleGetRescueId();//救援碼
+			if (rescueId) {
+				sendStringToFirebase(rescueId);
+			} else {
+				debugLog("no rescue id");
+			}
 
 			// //個人留言板
 			// const raidRes = await _httpClient.get({
@@ -2939,20 +2900,7 @@ function onGameApp() {
 			// const unionRes = await _httpClient.get({url: kh.env.urlRoot + "/a_unions/me/chats"});
 			// debugLog(JSON.stringify(unionRes.body, null, 2));
 
-			// if (!_httpClient) { debugLog("HTTP connection not initialized"); return defaultData; }
-			// //發送請求取得該關卡的詳細資料
-			// const areaId = Math.ceil(64 / 5);
-			// const detailRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_worlds/current`});
-			// const responseData = detailRes.body;
-			// const isAreaExist = responseData.a_areas.some((area) => {return area.area_id === areaId;});
-			// if (isAreaExist) {
-			// 	const apiAQuestInfo = kh.createInstance("apiAQuestInfo");
-			// 	await apiAQuestInfo.moveArea(areaId);
-			// } else {
-			// 	debugLog("no areaId" + areaId);
-			// }
 			//debugLog(JSON.stringify(detailRes.body, null, 2));
-
 		} catch (error) {
 			debugLog("executeDeveloperTests: " + error);
 			debugLog(JSON.stringify(error, null, 2));
@@ -2966,28 +2914,28 @@ function onGameApp() {
 			// 取得引入此 iframe 的外層網址
 			const outerUrl = document.referrer;
 			if (outerUrl.includes("skh.johren.games")) {
-				debugLog("Hime lauguage(cht)");
+				debugLog("lauguage: cht");
 				_language = 1;
 			} else if (outerUrl.includes("d2bqgmeis0s2xb")) {
-				debugLog("Hime lauguage(cht)");
+				debugLog("lauguage: cht");
 				_language = 1;
 			} else if (outerUrl.includes("d39cq07z7xwhr4")) {
-				debugLog("Hime lauguage(cht)");
+				debugLog("lauguage: cht");
 				_language = 1;
 			} else if (outerUrl.includes("du5e2cube3h3c")) {
-				debugLog("Hime lauguage(en)");
+				debugLog("lauguage: en");
 				_language = 2;
 			} else if (outerUrl.includes("nkh.dmmgames.com")) {
-				debugLog("Hime lauguage(en)");
+				debugLog("lauguage: en");
 				_language = 2;
 			} else if (outerUrl.includes("osapi.dmm.com")) {
-				debugLog("Hime lauguage(jp)");
+				debugLog("lauguage: jp");
 				_language = 0;
 			} else if (outerUrl.includes("kamihimeproject.net")) {
-				debugLog("Hime lauguage(jp)");
+				debugLog("lauguage: jp");
 				_language = 0;
 			} else {
-				debugLog("Hime lauguage? " + outerUrl);
+				debugLog("lauguage:? " + outerUrl);
 				_language = 0;
 			}
 		} catch (error) {
@@ -3164,66 +3112,6 @@ function onGameApp() {
 			debugLog("fetchOwnedStamps: " + error);
 		}
 	}
-	/**
-	 * @description 查詢持有英靈資訊，並更新到本地的字典檔快取中
-	 * @returns {Promise<void>}
-	 */
-	async function fetchAndCacheJobData() {
-		try {
-			const jobRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_jobs`});
-			const jobList = jobRes?.body?.data;
-			if (!Array.isArray(jobList)) {
-				debugLog("fetchAndCacheJobData fail");
-				return;
-			}
-			for (const job of jobList) {
-				_jobIdCache[job.a_job_id] = job.job_id;
-			}
-			debugLog("fetchAndCacheJobData ok");
-		} catch (error) {
-			debugLog("fetchAndCacheJobData: " + error);
-		}
-	}
-	/**
-	 * @description 利用 a_job_id 從儲存的字典快取中快速查詢 job_id
-	 * @param {Number|String} aJobId - 想要查詢的 a_job_id
-	 * @returns {Number|null} 回傳對應的 job_id，若找不到則回傳 null
-	 */
-	function getJobId(aJobId) {return _jobIdCache[aJobId] ?? null;}
-	/**
-	 * @description 查詢持有神姬資訊，並更新到本地的字典檔快取中
-	 */
-	async function fetchAndCacheHimeData() {
-		try {
-			//設置神姬過濾條件
-			await _httpClient.post({
-				url: `${kh.env.urlRoot}/a_players/me/display_filter/book_chara`,
-				json: {rarity: [],element_type: [],character_type: [],proper_weapon_type: []}
-			});
-			//獲取持有的神姬列表
-			const charactersRes = await _httpClient.get({
-				url: `${kh.env.urlRoot}/a_characters`,
-				json: {display_filter_name: "book_chara", page: 1, per_page: 100000, from_tower: false}
-			});
-			const charactersList = charactersRes?.body?.data;
-			if (!Array.isArray(charactersList)) {
-				debugLog("fetchAndCacheHimeData fail");
-				return;
-			}
-			for (const character of charactersList) {
-				_himeIdCache[character.a_character_id] = character.character_id;
-			}
-			debugLog("fetchAndCacheHimeData ok");
-		} catch (error) {
-			debugLog("fetchAndCacheHimeData: " + error);
-		}
-	}
-	/**
-	 * @description 利用 a_character_id 從儲存的字典快取中快速查詢 character_id
-	 * @param {Number|String} aCharacterId - 想要查詢的 a_character_id
-	 * @returns {Number|null} 回傳對應的 character_id，若找不到則回傳 null
-	 */
-	function getCharacterId(aCharacterId) {return _himeIdCache[aCharacterId] ?? null;}
 	/**
 	 * @description 查詢所有隊伍資訊
 	 */
@@ -4145,12 +4033,10 @@ function onGameApp() {
 			//const raidRes = apiABattles.getInSessionRaidEventList();
 			let battleKind = "raid_request";
 			if (isEventRaids) battleKind = "in_session_event";
-			const raidRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_battles",
-				json: { kind: battleKind }
-			});
+			const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_battles`,json: {kind: battleKind}});
 			//數量檢查
-			if (raidRes.body.max_record_count < 1) {return false;}
+			const rCount = raidRes?.body?.max_record_count;
+			if (!rCount || rCount < 1) return false;
 			//存在未結算的戰鬥
 			if (raidRes.body.unverified_battle_exist) await settleUnverifiedBattles();
 			//依條件尋找關卡
@@ -4622,7 +4508,7 @@ function onGameApp() {
 			for (let i = 0; i < 11; i++) {
 				const catRes = await _httpClient.post({
 					url: kh.env.urlRoot + "/gacha_category/" + free10CategoryId
-				});
+				}, "unblock");
 				if (catRes.body.is_max_weapon_or_summon) {
 					debugLog("weapons or summon are full");
 					break;//跳出無限迴圈，結束動作
@@ -4633,7 +4519,7 @@ function onGameApp() {
 					await _httpClient.post({
 						url: kh.env.urlRoot + "/a_gacha/normal",
 						json: { gacha_id: catRes.body.rest_times === 1 ? 191 : gachaId }
-					});
+					}, "unblock");
 					debugLog("free gacha OK (" + (i+1) + ")");
 					//等待後再繼續
 					await sleep(100);
@@ -4864,7 +4750,7 @@ function onGameApp() {
 						const getRes = await _httpClient.get({
 							url: kh.env.urlRoot + "/a_presents_receive",
 							json: {type: presentType, page: 1, per_page: 10000}
-						});
+						}, "unblock");
 						const receivedInfo = getRes.body?.received_info;
 						const presentIds = getRes.body?.receive_present_ids;
 						//判斷禮物箱是否空了
@@ -4876,7 +4762,7 @@ function onGameApp() {
 						const postRes = await _httpClient.post({
 							url: kh.env.urlRoot + "/a_presents_receive",
 							json: { present_ids: presentIds}
-						});
+						}, "unblock");
 						const postBody = postRes.body || {};
 						//檢查是否有未收取的
 						if (postBody.not_received_info && postBody.not_received_info.length > 0) {
@@ -5066,7 +4952,7 @@ function onGameApp() {
 			const response = await _httpClient.get({
 				url: kh.env.urlRoot + "/a_weapons",
 				json: { page: 1, per_page: 1000 }
-			});
+			}, "unblock");
 			const weaponList = response?.body?.data;
 			if (!weaponList || weaponList.length === 0) {
 				return;
@@ -5087,8 +4973,8 @@ function onGameApp() {
 				const batch = targetWeaponIds.splice(0, 20);
 				await _httpClient.post({
 					url: kh.env.urlRoot + "/a_weapons_reduct",
-					json: { ids: batch }
-				});
+					json: {ids: batch}
+				}, "unblock");
 				if (targetWeaponIds.length > 0) {
 					debugLog("weapon count: " + targetWeaponIds.length);
 					await sleep(300);
@@ -5130,7 +5016,7 @@ function onGameApp() {
 				await _httpClient.post({
 					url: kh.env.urlRoot + "/a_summons_reduct",
 					json: { ids: batch }
-				});
+				}, "unblock");
 				if (targetSummonIds.length > 0) {
 					debugLog("summon count: " + targetSummonIds.length);
 					await sleep(300);
@@ -5265,8 +5151,8 @@ function onGameApp() {
 				const batch = targetAccessoriesIds.splice(0, 20);
 				await _httpClient.post({
 					url: kh.env.urlRoot + "/a_accessories_reduct",
-					json: { ids: batch }
-				});
+					json: {ids: batch}
+				}, "unblock");
 				if (targetAccessoriesIds.length > 0) {
 					debugLog("accessories count: " + targetAccessoriesIds.length);
 					await sleep(300);
@@ -5421,7 +5307,7 @@ function onGameApp() {
 					await _httpClient.post({
 						url: kh.env.urlRoot + "/a_battles/" + battleId + "/result",
 						json: { quest_type: questType }
-					});
+					}, "unblock");
 				} catch (error) {
 					debugLog("watch fail: " + error);
 				}
@@ -5500,7 +5386,7 @@ function onGameApp() {
 				//查詢神姬詳細資料
 				const detailRes = await _httpClient.get({
 					url: kh.env.urlRoot + "/a_characters/" + chara
-				});
+				}, "unblock");
 				if (detailRes && detailRes.body) {
 					//名稱,稀有度,id
 					const himeData = {
@@ -5545,7 +5431,7 @@ function onGameApp() {
 				const chara = charas[i];
 				try {
 					//查詢神姬詳細資料
-					const detailRes = await _httpClient.get({url: kh.env.urlRoot + "/characters/" + chara});
+					const detailRes = await _httpClient.get({url: kh.env.urlRoot + "/characters/" + chara}, "unblock");
 					if (detailRes && detailRes.body) {
 						const himeName = detailRes.body.name;//取得神姬名字
 						debugLog("load " + (i+1) + " | " + charas.length + ", id = " + chara + ", " + himeName);
@@ -5711,7 +5597,7 @@ function onGameApp() {
 				try {
 					const detailRes = await _httpClient.get({
 						url: kh.env.urlRoot + "/weapons/" + weaponId
-					});
+					}, "unblock");
 					if (detailRes && detailRes.body) {
 						const weaponName = detailRes.body.name;
 						debugLog("load " + (i+1) + " | " + weaponIds.length + ", id = " + weaponId + ", " + weaponName);
@@ -5889,7 +5775,7 @@ function onGameApp() {
 					//查詢幻獸詳細資料
 					const detailRes = await _httpClient.get({
 						url: kh.env.urlRoot + "/summons/" + summonId
-					});
+					}, "unblock");
 					if (detailRes && detailRes.body) {
 						const summonName = detailRes.body.name;//取得幻獸名字
 						debugLog("load " + (i+1) + " | " + summonsIds.length + ", id = " + summonId + ", " + summonName);
@@ -5998,7 +5884,7 @@ function onGameApp() {
 					//查詢英靈詳細資料
 					const detailRes = await _httpClient.get({
 						url: kh.env.urlRoot + "/a_jobs/" + jobId
-					});
+					}, "unblock");
 					if (detailRes && detailRes.body) {
 						const jobName = detailRes.body.name;//取得英靈名字
 						debugLog("load " + (i+1) + " | " + jobIds.length + ", id = " + jobId + ", " + jobName);
@@ -6218,7 +6104,7 @@ function onGameApp() {
 	/**
 	 * @description 取得小聖靈藥(AP)與種子(BP)的物品ID
 	 */
-	async function initApBp() {
+	async function gatItemApBp() {
 		try {
 			const e = await _httpClient.get({
 				url: kh.env.urlRoot + "/a_items",
@@ -6227,10 +6113,10 @@ function onGameApp() {
 			if (e && e.body && e.body.data) {
 				_apItemId = e.body.data[1].a_item_id;
 				_bpItemId = e.body.data[3].a_item_id;
-				debugLog("initApBp OK");
+				debugLog("gatItemApBp OK");
 			}
 		} catch(error) {
-			debugLog("initApBp: " + error);
+			debugLog("gatItemApBp: " + error);
 		}
 	}
 	/**
@@ -6238,15 +6124,16 @@ function onGameApp() {
 	 */
 	async function refillApBpIfNeeded() {
 		try {
-			const e = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_players/me/quest_points"
-			});
-			const apItemCount = e.body.quest_points.ap;
-			const bpItemCount = e.body.quest_points.bp;
-			if (apItemCount < 100) {
-				await increaseAP();
-			} else if (bpItemCount < 10) {
-				await increaseBP();
+			const pointsRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_players/me/quest_points`}, "unblock");
+			const points = pointsRes?.body?.quest_points;
+			if (points) {
+				if (points.ap < 100) {
+					await increaseAP();
+				} else if (points.bp < 10) {
+					await increaseBP();
+				}
+			} else {
+				debugLog("refillApBpIfNeeded no quest points");
 			}
 		} catch(error) {
 			debugLog("refillApBpIfNeeded: " + error);
@@ -6259,7 +6146,7 @@ function onGameApp() {
 		try {
 			const apRes = await _httpClient.get({
 				url: kh.env.urlRoot + "/a_players/me/quest_points"
-			});
+			}, "unblock");
 			const apItemCount = apRes.body.quest_points.ap;
 			if (apItemCount < 100) await increaseAP();
 		} catch(error) {
@@ -6284,7 +6171,7 @@ function onGameApp() {
 		try {
 			const bpRes = await _httpClient.get({
 				url: kh.env.urlRoot + "/a_players/me/quest_points"
-			});
+			}, "unblock");
 			const bpItemCount = bpRes.body.quest_points.bp;
 			 if (bpItemCount < 10) await increaseBP();
 		} catch(error) {
@@ -6357,7 +6244,7 @@ function onGameApp() {
 				await _httpClient.post({
 					url: kh.env.urlRoot + "/a_battles/" + _battleId + "/help_request",
 					json: {quest_type: _questType, to_all: toAll, to_friends: toFriends, to_union_members: toUnion}
-				});			
+				}, "unblock");			
 			} else if (questInfo._isJoinedRaid) {
 				//別人的場子, 根據UI選擇設定發送對象
 				let toUnion = false;
@@ -6373,7 +6260,7 @@ function onGameApp() {
 				await _httpClient.post({
 					url: kh.env.urlRoot + "/a_battles/" + _battleId + "/help_request",
 					json: {quest_type: _questType, to_all: toAll, to_friends: toFriends, to_union_members: toUnion}
-				});
+				}, "unblock");
 			}
 		} catch(error) {
 			debugLog("battleSendHelp: " + error);
@@ -6460,9 +6347,12 @@ function onGameApp() {
 	 */
 	async function battleGetRanking() {
 		try {
-			const apiBattle = _battleWorld?.backendAPI;
-			if(!apiBattle) return;
-			const rankRes = await apiBattle.getRanking(_questType);
+			//const apiBattle = _battleWorld?.backendAPI;
+			//if(!apiBattle) return;
+			//const rankRes = await apiBattle.getRanking(_questType);
+			const rankRes = await _httpClient.get({
+				url: `${kh.env.urlRoot}/a_battles/${_battleId}/ranking`,
+				json: {quest_type: _questType}}, "unblock");
 			const players = rankRes?.body || [];
 			const layer =_battleWorld?.UIBackLayer;
 			if (!layer) return;
@@ -6665,8 +6555,10 @@ function onGameApp() {
 					}
 				}
 			}
+			return true;
 		} catch(error) {
 			debugLog("battleUpdateData: " + error);
+			return false;
 		}
 	}
 	/**
@@ -6818,6 +6710,11 @@ function onGameApp() {
 			const currentScene = cc.director.getRunningScene();
 			_currentSceneName = "battle";//更新戰鬥場景
 			sendSceneText(_currentSceneName);
+			//更新戰鬥階段
+			_battleWorld = kh.createInstance("battleWorld");
+			_currentStage = _battleWorld.stage._currentStage;
+			_maxStage = _battleWorld.stage._maxStage;
+			sendTurnText(`(${_currentStage}|${_maxStage}) 1`);
 			//由戰鬥場次的ID判斷是否為新的戰鬥
 			let currentBattleId = currentScene.getBattleId();
 			if (_battleId === currentBattleId) {
@@ -6830,10 +6727,9 @@ function onGameApp() {
 				}
 			} else {
 				_battleId = currentBattleId;//更新戰鬥ID
-				_battleWorld = kh.createInstance("battleWorld");
 				await waitForAttackButton();
 				//更新現在關卡類型
-				await battleUpdateData();//更新戰鬥資訊
+				if (!await battleUpdateData()) return;//更新戰鬥資訊
 				if (_autoBattleModeEnabled) await battleAdjustAutoState();//調整自動攻擊模式
 				if (_autoSummonEnabled) await battleAutoSummon();//幻獸攻擊
 				if (_questType === "raid") {
@@ -6858,16 +6754,17 @@ function onGameApp() {
 		}
 	}
 	/**
-	 * @description 戰鬥結束事件
+	 * @description 戰鬥結束事件,關卡的每個階段也都會觸發一次
 	 */
 	async function onBattleEnd() {
 		try {
-			//debugLog("on battle end");
-			_currentSceneName = "*";
-			sendSceneText(_currentSceneName);
-			sendTurnText("*");
-			//根據機器人種類繼續任務
-			await robotRun("onBattleEnd");
+			if (_currentStage === _maxStage) {
+				//最後階段
+				_currentSceneName = "*";
+				sendSceneText(_currentSceneName);
+				sendTurnText("*");
+				await robotRun("onBattleEnd");//根據機器人種類繼續任務
+			}
 		} catch(error) {
 			debugLog("onBattleEnd: " + error);
 		}
@@ -6993,7 +6890,7 @@ function onGameApp() {
 				const character = characterList[i];
 				if (!character) continue;
 				if (character.hp === 0) continue;
-
+                //debugLog(`chara:${character.name}, id:${character.id}`);
 				const skills = abilityList[i];
 				if (!skills || !Array.isArray(skills)) continue;
 
@@ -7007,145 +6904,144 @@ function onGameApp() {
 						case "blue":thePriority=28;break;
 						case "red":thePriority=32;break;
 					}
+                    //debugLog(`idx:${skill._index}, color:${skill._abilityData.color}`);
 					//特殊規則
 					if (character.isJob) {
-						const jobId = getJobId(character.id);
-						if (jobId === 34) {
+						if (character.id === 34) {
 							//愛迪生
 							switch (skill._index) {
-							case 1:thePriority=10;break;
-							case 2:thePriority=12;break;
-							case 3:thePriority=40;break;
-							case 4:thePriority=14;break;
+							case 0:thePriority=10;break;
+							case 1:thePriority=12;break;
+							case 2:thePriority=40;break;
+							case 3:thePriority=14;break;
 							}
 						}
-						if (jobId === 50) {
+						if (character.id === 50) {
 							//貝多芬
 							switch (skill._index) {
-							case 1:thePriority=10;break;
-							case 2:thePriority=42;break;
-							case 3:thePriority=43;break;
+							case 0:thePriority=10;break;
+							case 1:thePriority=42;break;
+							case 2:thePriority=43;break;
 							}
 						}
 					} else {
 						//優先紅30, 減CT技(個人)36, 減CT技(全部)40, 不使用99
-						const himeId = getCharacterId(character.id);
-						switch (himeId) {
+						switch (character.id) {
 							case 5167://[戦友想う刃]ルー
-								if (skill._index === 1) thePriority = 31;
+								if (skill._index === 0) thePriority = 31;
 								break;
 							case 5230://[決意の護衛者]ラー
-								if (skill._index === 3) thePriority = 36;
+								if (skill._index === 2) thePriority = 36;
 								break;
 							case 5243://[聖夜の約束]フレイヤ
-								if (skill._index === 4) thePriority = 19;
+								if (skill._index === 3) thePriority = 19;
 								break;
 							case 5248://[百花繚乱の領袖]バアル
-								if (skill._index === 3) thePriority = 36;
+								if (skill._index === 2) thePriority = 36;
 								break;
 							case 5249://[夢見る怠惰]アマナー
-								if (skill._index === 4) thePriority = 36;
+								if (skill._index === 3) thePriority = 36;
 								break;
 							case 5277://[極光の聖戦士]アテン
-								if (skill._index === 2) thePriority = 30;
+								if (skill._index === 1) thePriority = 30;
 								break;
 							case 5300://[贈愛の爛漫]シャイターン
-								if (skill._index === 3) thePriority = 40;
+								if (skill._index === 2) thePriority = 40;
 								break;
 							case 5311://[仔猫奮迅]キャスパリーグ
-								if (skill._index === 3) thePriority = 36;
+								if (skill._index === 2) thePriority = 36;
 								break;
 							case 5327://呂布
-								if (skill._index === 3) thePriority = 36;
+								if (skill._index === 2) thePriority = 36;
 								break;
 							case 5351://[愛怨の魔女]ヘーラー
-								if (skill._index === 1) thePriority = 36;
+								if (skill._index === 0) thePriority = 36;
 								break;
 							case 5355://[夢贈る堕天使]ベレヌス
 								switch (skill._index) {
-									case 1: thePriority = 30; break;
-									case 2: thePriority = 31; break;
+									case 0: thePriority = 30; break;
+									case 1: thePriority = 31; break;
 								}
 								break;
 							case 5373://[神代の始祖]イヴ
 								switch (skill._index) {
-									case 1: thePriority = 30; break;
-									case 2: thePriority = 31; break;
+									case 0: thePriority = 30; break;
+									case 1: thePriority = 31; break;
 								}
 								break;
 							case 5389://[或る夏の一幕]ファレグ
-								if (skill._index === 3) thePriority = 40;
+								if (skill._index === 2) thePriority = 40;
 								break;
 							case 5392://玉泉日和子
-								if (skill._index === 1) thePriority = 36;
+								if (skill._index === 0) thePriority = 36;
 								break;
 							case 5397://[蒼雷の庇護者]ステュクス
-								if (skill._index === 4) thePriority = 36;
+								if (skill._index === 3) thePriority = 36;
 								break;
 							case 5401://[喫茶浪漫]アマナー
-								if (skill._index === 4) thePriority = 36;
+								if (skill._index === 3) thePriority = 36;
 								break;
 							case 5417://[惑溺のふわもふ]モイラ
-								if (skill._index === 4) thePriority = 36;
+								if (skill._index === 3) thePriority = 36;
 								break;
 							case 5424://[麗衣の代理人]アモン
 								switch (skill._index) {
+									case 0: thePriority = 30; break;
 									case 1: thePriority = 30; break;
-									case 2: thePriority = 30; break;
-									case 3: thePriority = 36; break;
-									case 4: thePriority = 37; break;
+									case 2: thePriority = 36; break;
+									case 3: thePriority = 37; break;
 								}
 								break;
 							case 5426://[輝炎の剣]オク
-								if (skill._index === 4) thePriority = 36;
+								if (skill._index === 3) thePriority = 36;
 								break;
 							case 5427://[月華の舞巫女]アリサ
-								if (skill._index === 4) thePriority = 36;
+								if (skill._index === 3) thePriority = 36;
 								break;
 							case 5435://アルテミス[反心想]
-								if (skill._index === 3) thePriority = 40;
+								if (skill._index === 2) thePriority = 40;
 								break;
 							case 5441://[深潜の麗女]アデーレ
 								switch (skill._index) {
+									case 0: thePriority = 30; break;
 									case 1: thePriority = 30; break;
-									case 2: thePriority = 30; break;
 								}
 								break;
 							case 5444://[波戯の愛霹]シャイターン
-								if (skill._index === 1) thePriority = 36;
+								if (skill._index === 0) thePriority = 36;
 								break;
 							case 5454://[神威明星]ルシファー
 								switch (skill._index) {
-									case 1: thePriority = 30; break;
-									case 4: thePriority = 40; break;
+									case 0: thePriority = 30; break;
+									case 3: thePriority = 40; break;
 								}
 								break;
 							case 5459://[省察の先に]茨木童子
-								if (skill._index === 4) thePriority = 36;
+								if (skill._index === 3) thePriority = 36;
 								break;
 							case 5471://[正月福娘]フィア
-								if (skill._index === 1) thePriority = 30;
+								if (skill._index === 0) thePriority = 30;
 								break;
 							case 5472://[砂漠の湯あみ]ジェフティ
-								if (skill._index === 1) thePriority = 30;
+								if (skill._index === 0) thePriority = 30;
 								break;
 							case 5486://[HELIX]テトラ
-								if (skill._index === 1) thePriority = 30;
+								if (skill._index === 0) thePriority = 30;
 								break;
 							case 9004://バアル[神想真化]
 								switch (skill._index) {
-									case 3: thePriority = 35; break;
-									case 4: thePriority = 36; break;
+									case 2: thePriority = 35; break;
+									case 3: thePriority = 36; break;
 								}
 								break;
 							case 9006://アモン[神想真化]
 								switch (skill._index) {
-									case 1: thePriority = 30; break;
-									case 4: thePriority = 40; break;
+									case 0: thePriority = 30; break;
+									case 3: thePriority = 40; break;
 								}
 								break;
 							case 9014://ハデス[神想真化]
-								if (skill._index === 1) thePriority = 30;
+								if (skill._index === 0) thePriority = 30;
 								break;
 						}
 					}
@@ -7161,12 +7057,13 @@ function onGameApp() {
 				}
 			}
 			if (abilityArray.length > 0) {
-				//技能排序
+				//技能依優先級別排序
 				abilityArray.sort((a, b) => a.priority - b.priority);
 				const attackTargetPos = await battleWorld.getTarget();
 				for (const abilityItem of abilityArray) {
 					const character = characterList[abilityItem.character_index];
 					const abilityPos = abilityItem.ability_index;
+                    //debugLog(`chara:${abilityItem.character_index}, idx:${abilityItem.ability_index}, color:${abilityItem.color}`);
 					let targetChara = null;
 					if (abilityItem.selectable) {//取得技能指定目標
 						const targetIndex = getPartyTarget(abilityItem.selectableType);
@@ -7193,8 +7090,9 @@ function onGameApp() {
 							continue;
 						} else {
 							debugLog("_useAbility: " + JSON.stringify(error2, null, 2));
+							//await battleReload();//重載戰鬥
+							return;
 						}
-						await sleep(300);
 					}
 					return;
 				}
@@ -7206,14 +7104,12 @@ function onGameApp() {
 			const potionNeed = needPotion();
 			if (hasSuperPotion && potionNeed.shouldUse && !hasPotion) {
 				await battleWorld.useItem("cure-medic");
-
 			} else if (potionNeed.needs > 0 && hasPotion) {
 				await battleWorld.useItem("cure-bottle", potionNeed.needFirst);
-
 			}
 			//點擊攻擊按鍵
 			await battleWorld.battleUI.AttackButton.simulateAttack();
-			await sleep(300);
+			await sleep(400);
 		} catch(error) {
 			debugLog("customAbilityActivation: " + error);
 		}
@@ -7645,94 +7541,6 @@ function onGameApp() {
 			}
 		} catch(error) {
 			debugLog("onLoveScenesSkip: " + error);
-		}
-	}
-	/**
-	 * @description 攔截到的其他玩家Raid顯示資訊
-	 */
-	function onRaidActionTeammate(message) {
-		try{
-			//debugLog(JSON.stringify(message, null, 2));
-			//過濾訊息
-			if (message.line_2_action === "Attacked") {
-				const damageStr = message.line_3_damage_result || "";
-				const rawNumber = parseInt(damageStr.replace(/,/g, ''));
-				if (isNaN(rawNumber)) return;
-				//傷害太低不洗版
-				if (rawNumber < _minimumDamage) return;
-
-				let damageFormatted = "";
-				if (rawNumber >= 100000000) { 
-					damageFormatted = (rawNumber / 100000000).toFixed(2).replace(/\.?0+$/, "") + "億";
-				} else if (rawNumber >= 10000) { 
-					damageFormatted = (rawNumber / 10000).toFixed(1).replace(/\.0$/, "") + "萬";
-				} else if (rawNumber > 0) {
-					damageFormatted = rawNumber.toLocaleString();
-				} else {
-					damageFormatted = "0";
-				}
-				debugLog(`${message.line_1_action}${damageFormatted}`);
-			}			
-		} catch(error) {
-			debugLog("onRaidActionTeammate: " + error);
-		}
-	}
-	/**
-	 * @description 攔截到自己的Raid顯示資訊
-	 */
-	function onRaidActionSelf(scenarioData) {
-		if (!scenarioData || !scenarioData.length) return;
-		//計算總傷害值
-		const calculateTotalDamage = (scenarioData) => {
-			//建立一個通用提取傷害值的邏輯
-			const getDmg = (cmdList, target = null) => 
-				cmdList.map(e => e.damage || [])
-						.flat(2)
-						.filter(e => !target || e.to === target)
-						.reduce((sum, e) => sum + (e.value || 0), 0);
-
-			const damageCmds = scenarioData.filter(e => e.cmd === "damage");
-			const attacks = scenarioData.filter(e => e.cmd === "attack" && e.from === "player");
-			const summons = scenarioData.filter(e => e.cmd === "summon_damage");
-			const burstStreak = scenarioData.filter(e => e.cmd === "burst_streak");
-			return getDmg(damageCmds, "enemy") + getDmg(attacks) + getDmg(summons) + getDmg(burstStreak);
-		};
-		//解析動作類型並返回描述字串
-		const getActionDescription = (scenarioData) => {
-			const ability = scenarioData.find(e => e.cmd === "ability" && e.from === "player");
-			const bursts = scenarioData.some(e => e.cmd === "burst" && e.from === "player");
-			const summons = scenarioData.some(e => e.cmd === "summon_damage");
-			const attacks = scenarioData.some(e => e.cmd === "attack" && e.from === "player");
-			if (summons) return "幻獸攻擊";
-			if (bursts) return "爆裂攻擊";
-			if (ability) return `技能(${ability.name}) `;
-			if (attacks) return "普通攻擊";
-			return "";//無特定動作
-		};
-		try{
-			//計算傷害並取得動作描述
-			const totalDamage = calculateTotalDamage(scenarioData);
-			//傷害太低不洗版
-			if (totalDamage < _minimumDamage) return;
-			const actionText = getActionDescription(scenarioData);
-			if (actionText) {
-				let damageFormatted = "";
-				if (totalDamage >= 100000000) { 
-					//大於等於 1 億：除以 1 億，保留最多 2 位小數，並去除結尾多餘的 0
-					damageFormatted = (totalDamage / 100000000).toFixed(2).replace(/\.?0+$/, "") + "億";
-				} else if (totalDamage >= 1000) { 
-					//大於等於 1 萬：除以 1 萬，保留最多 1 位小數，並去除結尾的 .0
-					damageFormatted = (totalDamage / 10000).toFixed(1).replace(/\.0$/, "") + "萬";
-				} else if (totalDamage > 0) {
-					//小於 1 萬：直接加千分位逗號顯示
-					damageFormatted = totalDamage.toLocaleString();
-				} else {
-					damageFormatted = "0";
-				}
-				debugLog(`${actionText} ${damageFormatted}`);
-			}
-		} catch(error) {
-			debugLog("onRaidActionSelf: " + error);
 		}
 	}
 }
