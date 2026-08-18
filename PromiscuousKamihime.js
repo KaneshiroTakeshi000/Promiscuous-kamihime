@@ -1683,7 +1683,6 @@ function onGameApp() {
 	let _playerActionTime = 0;//暫存動作時間,防技能卡住
 	let _rankingTimestamp = 0;//暫存更新名單的時間
 	let _raidPointsDelayOk = false;//是否已關閉功績顯示
-	const _minimumDamage = 1000000;//戰鬥紀錄可顯示的最小傷害
 
 	//daily robot資料區
 	const _dailyQuests = [];//待處理的每日戰鬥關卡
@@ -6784,6 +6783,12 @@ function onGameApp() {
 							await _battleWorld.battleUI.AttackButton.simulateAttack();//遊戲的攻擊函式
 						} else {
 							await customAbilityActivation();//自訂技能施放順序
+							//檢查閒置時間
+							let currentTime = new Date();
+							if (currentTime - _playerActionTime > _autoReloadWaiting) {
+								await battleReload();
+								_playerActionTime = currentTime;
+							}
 						}
 					}
 				} else if (await isNextButtonReady()) {
@@ -6831,11 +6836,11 @@ function onGameApp() {
 			}
 			//自動攻擊中太久沒有動作時自動Reload
 			if (_autoReloadEnabled) {
-				// 取得當前狀態(0:手動,1:綠,2:紅)
+				//取得當前狀態(0:手動,1:綠,2:紅)
 				const currentState = kh.createInstance("AutoScenarioStateHandler")?.getViewState()?.STATE;
 				// 非自動攻擊不作用
 				if (currentState === 0) return;
-				// 檢查閒置時間
+				//檢查閒置時間
 				let currentTime = new Date();
 				if (currentTime - _playerActionTime > _autoReloadWaiting) {
 					await battleReload();
@@ -6903,13 +6908,15 @@ function onGameApp() {
 			if (!battleWorld) return;
 			const characterList = battleWorld.characterList || [];
 			let jonIndex = -1;
+			//貝多芬模式的施放邏輯使用
 			let beethovenMode = false;
 			let beethovenRedCount = 0;
-			let beethovenGreendCount = 0;
+			let beethovenGreenCount = 0;
 			let beethovenYellowCount = 0;
 			let beethovenBlueCount = 0;
 
 			for (let i = 0; i < characterList.length; i++) {
+				const character = characterList[i];
 				if (characterList[i].isJob) {
 					jonIndex=i;
 					//貝多芬時取得身上旋律數量
@@ -6917,11 +6924,11 @@ function onGameApp() {
 						beethovenMode = true;
 						 const members = battleWorld?.battleStatus?._partyMembers;
 						 if (members && members[i] && members[i].status_effects) {
-							const effects = partyMembers[i].status_effects;
+							const effects = members[i].status_effects;
 							for (const effect of effects) {
 								switch (effect.id) {
 									case 13848: beethovenRedCount=effect.level;break;
-									case 13849: beethovenGreendCount=effect.level;break;
+									case 13849: beethovenGreenCount=effect.level;break;
 									case 13850: beethovenYellowCount=effect.level;break;
 									case 13851: beethovenBlueCount=effect.level;break;
 								}
@@ -6944,18 +6951,63 @@ function onGameApp() {
 								debugLog("summonAttackExecute fail");
 							}
 						}
-						await sleep(200);
+						await sleep(300);
 						return;
 					}
 				}
 			}
 			//取得場上可用技能
 			const abilityList = battleWorld.characterAbilityList || [];
+			//貝多芬戰術,先統計技能色彩
+			const totalMelody = beethovenRedCount + beethovenGreenCount + beethovenYellowCount + beethovenBlueCount;
+			let targetColors = [];
+			if (beethovenMode) {
+				//先計算各顏色可用技能數量
+				const availableColorCount = { yellow: 0, blue: 0, green: 0, red: 0 };
+				for (let i = 0; i < characterList.length; i++) {
+					if (!characterList[i] || characterList[i].hp === 0 || characterList[i].isJob) continue;
+					const skills = abilityList[i];
+					if (!skills || !Array.isArray(skills)) continue;
+					for (const skill of skills) {
+						if (skill._abilityData.ready && !skill._abilityData.is_banned) {
+							const color = skill._abilityData.color;
+							availableColorCount[color] = (availableColorCount[color] || 0) + 1;
+						}
+					}
+				}
+				if (totalMelody < 3) {
+					if (totalMelody === 0) {
+						//0個旋律時
+						if (availableColorCount.yellow >= 3) targetColors = ["yellow"];
+						else if (availableColorCount.blue >= 3) targetColors = ["blue"];
+						else if (availableColorCount.green >= 3) targetColors = ["green"];
+						else if (availableColorCount.red >= 3) targetColors = ["red"];
+						else targetColors = ["yellow", "blue", "green"];
+					} else if (totalMelody === 1) {
+						//1個旋律時
+						if (beethovenYellowCount === 1) targetColors = ["yellow", "blue", "green"];
+						else if (beethovenBlueCount === 1) targetColors = ["yellow", "blue", "green"];
+						else if (beethovenGreenCount === 1) targetColors = ["yellow", "blue", "green"];
+						else if (beethovenRedCount === 1) targetColors = ["red"];
+					} else if (totalMelody === 2) {
+						//2個旋律時
+						if (beethovenYellowCount === 2) targetColors = ["yellow"];
+						else if (beethovenBlueCount === 2) targetColors = ["blue"];
+						else if (beethovenGreenCount === 2) targetColors = ["green"];
+						else if (beethovenRedCount === 2) targetColors = ["red"];
+						else if (beethovenYellowCount === 1 && beethovenBlueCount === 1) targetColors = ["green"];
+						else if (beethovenYellowCount === 1 && beethovenGreenCount === 1) targetColors = ["blue"];
+						else if (beethovenBlueCount === 1 && beethovenGreenCount === 1) targetColors = ["yellow"];
+						else targetColors = ["yellow", "blue", "green"]; // 防呆保護
+					}
+				}
+			}
+			//技能優先級分配
 			const abilityArray = [];
 			for (let i = 0; i < characterList.length; i++) {
 				const character = characterList[i];
 				if (!character || character.hp === 0) continue;
-				//debugLog(`chara:${character.name}, id:${character.id}`);
+
 				const skills = abilityList[i];
 				if (!skills || !Array.isArray(skills)) continue;
 				const characterId = character.id;
@@ -6963,7 +7015,6 @@ function onGameApp() {
 				for (const skill of skills) {
 					if (!skill._abilityData.ready) continue;
 					if (skill._abilityData.is_banned) continue;
-					//debugLog(`idx:${skill._index}, color:${skill._abilityData.color}`);
 					//一般顏色的準則,越小越優先施放
 					let thePriority = SKILL_COLOR_PRIORITY[skill._abilityData.color] || 99;
 					//角色特殊規則
@@ -6974,15 +7025,30 @@ function onGameApp() {
 							thePriority = SOUL_SKILL_PRIORITY_MAP[characterId][skillIdx];
 						}
 					} else {
-						if (beethovenMode) {
-							//come soon
+						if (beethovenMode) {						
+							//原來的優先級
+							const charMappedPriority = CHAR_SKILL_PRIORITY_MAP[characterId]?.[skillIdx];
+							if (charMappedPriority === 36 || charMappedPriority === 40) {
+								thePriority = charMappedPriority;//如果是減CT技能,不改變優先級
+							} else if (totalMelody < 3) {
+								if (targetColors.includes(skill._abilityData.color)) {
+									thePriority = 15;//目標顏色
+								} else {
+									thePriority = 55;//會破壞旋律的顏色
+								}
+							} else {
+								if (charMappedPriority !== undefined) {
+									thePriority = charMappedPriority;//特殊技能可照常放
+								} else {
+									thePriority = 55;//避免多餘顏色擠掉排好的旋律
+								}
+							}
 						} else {
 							if (CHAR_SKILL_PRIORITY_MAP[characterId] && CHAR_SKILL_PRIORITY_MAP[characterId][skillIdx]) {
 								thePriority = CHAR_SKILL_PRIORITY_MAP[characterId][skillIdx];
 							}
 						}
 					}
-
 					if (thePriority === 99) continue;
 					abilityArray.push({
 						character_index: i,//角色索引
@@ -7001,7 +7067,7 @@ function onGameApp() {
 				for (const abilityItem of abilityArray) {
 					const character = characterList[abilityItem.character_index];
 					const abilityPos = abilityItem.ability_index;
-					//debugLog(`chara:${abilityItem.character_index}, idx:${abilityItem.ability_index}, color:${abilityItem.color}`);
+
 					let targetChara = null;
 					if (abilityItem.selectable) {//取得技能指定目標
 						const targetIndex = getPartyTarget(abilityItem.selectableType);
@@ -7011,7 +7077,7 @@ function onGameApp() {
 					try {//施放技能
 						const bufferedInput = kh.createInstance("AbilityBufferedInput", [character, abilityPos, attackTargetPos, targetChara]);
 						await battleWorld._useAbility(bufferedInput._character,bufferedInput._abilityPos,bufferedInput._attackTargetPos,bufferedInput._abilityTarget);
-						await sleep(200);
+						await sleep(300);
 					} catch(error2) {
 						if (error2.bufferedInputLength === 0) {
 							//執行錯誤,先忽略技能
