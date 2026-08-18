@@ -1683,6 +1683,7 @@ function onGameApp() {
 	let _playerActionTime = 0;//暫存動作時間,防技能卡住
 	let _rankingTimestamp = 0;//暫存更新名單的時間
 	let _raidPointsDelayOk = false;//是否已關閉功績顯示
+	let _attackButtonHookOk = false;
 
 	//daily robot資料區
 	const _dailyQuests = [];//待處理的每日戰鬥關卡
@@ -1982,8 +1983,6 @@ function onGameApp() {
 			}
 			//廢除路徑檢查機制(防外掛?)
 			kh.Monitor.prototype.checkPath = () => {};
-			//初始化 HTTP 連接
-			if (!_httpClient) {_httpClient = kh.createInstance("HttpConnection");}
 			//攔截所有發往遊戲伺服器的 GET 請求
 			kh.HttpConnection.prototype.getRaw = kh.HttpConnection.prototype.get;
 			kh.HttpConnection.prototype.get = function (requestData, reqType = "normal") {
@@ -2059,6 +2058,8 @@ function onGameApp() {
 			kh.HttpConnection._openRetryMessagePopup = function (argsData, error) {
 				this._retryAfterMinWait(argsData, error, 500);
 			}
+			//初始化 HTTP 連接
+			if (!_httpClient) {_httpClient = kh.createInstance("HttpConnection");}
 			//幻獸動畫
 			kh.Summon.prototype.FADE_SPEED = 0.1;//default 0.3
 			//動畫加速
@@ -2290,7 +2291,7 @@ function onGameApp() {
 	*/
 	async function initBattleObservers() {
 		try {
-			if (!kh.RaidMessageHandler || !kh.BattleWorld || !kh.RaidScenarioPlayer || !kh.env || !kh.EnemyStatusBar) {
+			if (!kh.BattleWorld || !kh.RaidScenarioPlayer || !kh.env || !kh.EnemyStatusBar) {
 				setTimeout(initBattleObservers, 500);
 				return;
 			}
@@ -2312,7 +2313,7 @@ function onGameApp() {
 				sendTurnText(`(${_currentStage}/${_maxStage}),${t+1}`);
 				return result;
 			}
-			//攔截自己的戰鬥指令,檢測自動戰鬥中卡住的情況
+			//攔截自己發送的戰鬥指令,檢測自動戰鬥中卡住的情況
 			const originalMethodUseAbility = kh.BattleWorld.prototype.useAbility;
 			kh.BattleWorld.prototype.useAbilityRaw = kh.BattleWorld.prototype.useAbility;
 			kh.BattleWorld.prototype.useAbility = function(character, abilityPos, abilityTarget) {_playerActionTime = new Date();return originalMethodUseAbility.call(this, character, abilityPos, abilityTarget);}
@@ -2322,6 +2323,10 @@ function onGameApp() {
 			const originalMethodAttack = kh.BattleWorld.prototype.attack;
 			kh.BattleWorld.prototype.attackRaw = kh.BattleWorld.prototype.attack;
 			kh.BattleWorld.prototype.attack = function() {_playerActionTime = new Date();return originalMethodAttack.call(this);}
+			//攔截戰鬥時伺服器資料回應
+			//const originalHandleData = kh.BattleWorld.prototype._handleData;
+			//kh.BattleWorld.prototype._handleDataRaw = kh.BattleWorld.prototype._handleData;
+			//kh.BattleWorld.prototype._handleData = async function(data) {const result = originalHandleData.call(this, data);setTimeout(() => {onBattleDataHandled(data)}, 0);return result;}
 			//敵方血量顯示
 			const enemyStatusBarProto = kh.EnemyStatusBar.prototype;
 			//初始化紀錄
@@ -2392,16 +2397,50 @@ function onGameApp() {
 			};
 			//操作行為統計與埋點分析追蹤器,把紀錄全攔了
 			if (kh._statisticsRepository) {
-				debugLog("kill statistics repository!");
-				const RepoPrototype = kh._statisticsRepository.prototype;
-				const originalLogDown = RepoPrototype.logDown;
-				RepoPrototype.logDown = function(nodeKey, normalizedPos, count) {return;};
-				const originalLogUp = RepoPrototype.logUp;
-				RepoPrototype.logUp = function(nodeKey, normalizedPos, holdDuration) {return;};
-				const originalPickHotData = RepoPrototype.pickHotData;
-				RepoPrototype.pickHotData = function(targetKey, limit) {return;};
-				const originalSetThreshold = RepoPrototype.setThreshold;
-				RepoPrototype.setThreshold = function(threshold) {return originalSetThreshold.call(this, -1);};
+				const repoPrototype = kh._statisticsRepository.prototype;
+				const originalLogDown = repoPrototype.logDown;
+				repoPrototype.logDown = function(nodeKey, normalizedPos, count) {};
+				const originalLogUp = repoPrototype.logUp;
+				repoPrototype.logUp = function(nodeKey, normalizedPos, holdDuration) {};
+				const originalPickHotData = repoPrototype.pickHotData;
+				repoPrototype.pickHotData = function(targetKey, limit) {};
+				const originalSetThreshold = repoPrototype.setThreshold;
+				repoPrototype.setThreshold = function(threshold) {return originalSetThreshold.call(this, -1);};
+			}
+			//日誌,把紀錄全攔了
+			const logger = kh.createInstance("logger");
+			if (logger) {
+				const loggerPrototype = Object.getPrototypeOf(logger);
+				loggerPrototype.reportBattleActionRequestRaw = loggerPrototype.reportBattleActionRequest;
+				loggerPrototype.reportBattleActionRequest = function(sceneInstanceId, data) {};
+				loggerPrototype.reportBattleCharacterStatusRaw = loggerPrototype.reportBattleCharacterStatus;
+				loggerPrototype.reportBattleCharacterStatus = function(sceneInstanceId, data) {};
+				loggerPrototype.reportBattleExitRaw = loggerPrototype.reportBattleExit;
+				loggerPrototype.reportBattleExit = function(sceneInstanceId, data) {}; 
+				loggerPrototype.reportBattleScenarioRaw = loggerPrototype.reportBattleScenario;
+				loggerPrototype.reportBattleScenario = function(sceneInstanceId, data) {}; 
+				loggerPrototype.reportBattleStartRaw = loggerPrototype.reportBattleStart;
+				loggerPrototype.reportBattleStart = function(sceneInstanceId, data) {}; 
+				loggerPrototype.reportBattleStatusRaw = loggerPrototype.reportBattleStatus;
+				loggerPrototype.reportBattleStatus = function(sceneInstanceId, data) {}; 
+				loggerPrototype.reportBattleStatusEffectsRaw = loggerPrototype.reportBattleStatusEffects;
+				loggerPrototype.reportBattleStatusEffects = function(sceneInstanceId, data) {}; 
+				loggerPrototype.reportCustomBattleDataRaw = loggerPrototype.reportCustomBattleData;
+				loggerPrototype.reportCustomBattleData = function(sceneInstanceId, data, customCategory) {};
+				loggerPrototype.reportCommunicationErrorRaw = loggerPrototype.reportCommunicationError;
+				loggerPrototype.reportCommunicationError = function(reqUrlObj, responseObj, retryInfo) {};
+				loggerPrototype.reportGlobalErrorRaw = loggerPrototype.reportGlobalError;
+				loggerPrototype.reportGlobalError = function(errorEvent) {};
+				loggerPrototype.reportJsExceptionRaw = loggerPrototype.reportJsException;
+				loggerPrototype.reportJsException = function(errorEvent) {};
+				loggerPrototype.reportPageTransitionRaw = loggerPrototype.reportPageTransition;
+				loggerPrototype.reportPageTransition = function(pageInfo) {};
+				loggerPrototype.reportPopupTransitionRaw = loggerPrototype.reportPopupTransition;
+				loggerPrototype.reportPopupTransition = function(actionType, popupWidget) {};
+				loggerPrototype.reportPubsubEventRaw = loggerPrototype.reportPubsubEvent;
+				loggerPrototype.reportPubsubEvent = function(eventName, data) {};
+				loggerPrototype.reportWidgetUserOperationRaw = loggerPrototype.reportWidgetUserOperation;
+				loggerPrototype.reportWidgetUserOperation = function(actionType, widgetNode) {};
 			}
 			setTimeout(initCache, 1200);
 			debugLog('initialization Part4 starting...');
@@ -2916,25 +2955,6 @@ function onGameApp() {
 			//fetchElementQuest();
 			//fetchMaterialQuest();
 			//fetchAccessoryQuest();
-
-			// const battleWorld = kh.createInstance("battleWorld");
-			// const characterList = battleWorld.characterList || [];
-			// for (let i = 0; i < characterList.length; i++) {
-			// 	const character = characterList[i];
-			// 	debugLog(`chara:${character.name}, id:${character.id}`);
-			// }
-			// const members = battleWorld?.battleStatus?._partyMembers;
-			// if (members && members.length > 0) {
-			// 	const effects = members[0].status_effects;
-			// 	for (const effect of effects) {
-			// 		debugLog(JSON.stringify(effect));
-			// 		//ex: {"id":23,"description":"??","level":0,"turn":2}
-			// 		//{"id":13851,"description":"處於演奏蒼之旋律狀態","level":1}
-			// 		//{"id":13850,"description":"處於演奏黃之旋律狀態","level":1}
-			// 		//{"id":13848,"description":"處於演奏紅之旋律狀態","level":1}
-			// 		//{"id":13849,"description":"處於演奏翠之旋律狀態","level":1}
-			// 	}
-			// }
 
 			const rescueId = await battleGetRescueId();//救援碼
 			if (rescueId) {
@@ -5180,12 +5200,7 @@ function onGameApp() {
 			//取得角色劇情
 			const charRes = await _httpClient.get({
 				url: kh.env.urlRoot + "/a_library/character_episodes",
-				json: {
-					harem: true,
-					page: 1,
-					per_page: 100000,
-					display_filter_name: "episode_chara"
-				}
+				json: {harem: true, page: 1, per_page: 100000, display_filter_name: "episode_chara"}
 			}, "unblock");
 			const characters = charRes.body.data.filter(c => c.unread_episode);
 			if (characters.length > 0) {
@@ -5194,10 +5209,7 @@ function onGameApp() {
 					try {
 						const questRes = await _httpClient.get({
 							url: kh.env.urlRoot + "/a_quests",
-							json: {
-								type: "harem-character",
-								character_id: character.character_id
-							}
+							json: {type: "harem-character", character_id: character.character_id}
 						}, "unblock");
 						//篩選出尚未通關的劇情
 						const quests = questRes.body.data.filter(q => !q.is_cleared && q.a_quest_id);
@@ -5210,12 +5222,7 @@ function onGameApp() {
 			//取得幻獸劇情
 			const summonRes = await _httpClient.get({
 				url: kh.env.urlRoot + "/a_library/summon_episodes",
-				json: {
-					harem: true,
-					page: 1,
-					per_page: 100000,
-					display_filter_name: "episode_summ"
-				}
+				json: {harem: true, page: 1, per_page: 100000, display_filter_name: "episode_summ"}
 			}, "unblock");
 			const summons = summonRes.body.data.filter(c => c.unread_episode);
 			//取得未閱讀幻獸劇情
@@ -5224,10 +5231,7 @@ function onGameApp() {
 					try {
 						const questRes = await _httpClient.get({
 							url: kh.env.urlRoot + "/a_quests",
-							json: {
-								type: "harem-summon",
-								summon_id: summon.summon_id
-							}
+							json: {type: "harem-summon", summon_id: summon.summon_id}
 						}, "unblock");
 						//篩選出尚未通關的劇情
 						const quests = questRes.body.data.filter(q => !q.is_cleared && q.a_quest_id);
@@ -5240,11 +5244,7 @@ function onGameApp() {
 			//取得英靈劇情
 			const jobRes = await _httpClient.get({
 				url: kh.env.urlRoot + "/a_library/jobs",
-				json: {
-					harem: true,
-					page: 1,
-					per_page: 100000
-				}
+				json: {harem: true, page: 1, per_page: 100000}
 			}, "unblock");
 			const souls = jobRes.body.data.filter(c => c.unread_episode);
 			if (souls.length > 0) {
@@ -5252,10 +5252,7 @@ function onGameApp() {
 					try {
 						const questRes = await _httpClient.get({
 							url: kh.env.urlRoot + "/a_quests",
-							json: {
-								type: "harem-job",
-								job_id: soul.job_id
-							}
+							json: {type: "harem-job", job_id: soul.job_id}
 						}, "unblock");
 						//篩選出尚未通關的劇情
 						const quests = questRes.body.data.filter(q => !q.is_cleared && q.a_quest_id);
@@ -5268,11 +5265,7 @@ function onGameApp() {
 			//Extra_skin
 			const skinsRes = await _httpClient.get({
 				url: kh.env.urlRoot + "/a_library/skins",
-				json: {
-					harem: true,
-					page: 1,
-					per_page: 100000
-				}
+				json: {harem: true, page: 1, per_page: 100000}
 			}, "unblock");
 			const skins = skinsRes.body.data.filter(c => c.unread_episode);
 			if (skins.length > 0) {
@@ -5280,10 +5273,7 @@ function onGameApp() {
 					try {
 						const questRes = await _httpClient.get({
 							url: kh.env.urlRoot + "/a_quests",
-							json: {
-								type: "harem-character",
-								character_id: skin.id
-							}
+							json: {type: "harem-character", character_id: skin.id}
 						}, "unblock");
 						const quests = questRes.body.data.filter(q => !q.is_cleared && q.a_quest_id);
 						allEpisodes.push(...quests);
@@ -5309,12 +5299,12 @@ function onGameApp() {
 				try {
 					await _httpClient.post({
 						url: kh.env.urlRoot + "/a_quests/" + questId + "/start",
-						json: { type: questType }
+						json: {type: questType}
 					}, "unblock");
 					//完成劇情
 					await _httpClient.post({
 						url: kh.env.urlRoot + "/a_battles/" + battleId + "/result",
-						json: { quest_type: questType }
+						json: {quest_type: questType}
 					}, "unblock");
 				} catch (error) {
 					debugLog("watch fail: " + error);
@@ -6189,23 +6179,47 @@ function onGameApp() {
 			if (_raidPointsDelayOk) return;
 			if (_questType === "raid" || _questType === "raid_event") {
 				const bcrrp = kh.createInstance("BattleCommandReceiveRaidPoints");
-				if (!bcrrp) return;
-				const proto = Object.getPrototypeOf(bcrrp);
-				if (proto) {
-					proto.COMMAND_DURATION = 0;
-					proto.FADE_IN_SPEED = 0.1;
-					proto.FADE_OUT_SPEED = 0.1;
-					proto.VISIBLE_DURATION = 200;
+				if (bcrrp) {
+					const bcrrpProto = Object.getPrototypeOf(bcrrp);
+					bcrrpProto.COMMAND_DURATION = 0;
+					bcrrpProto.FADE_IN_SPEED = 0.1;
+					bcrrpProto.FADE_OUT_SPEED = 0.1;
+					bcrrpProto.VISIBLE_DURATION = 100;
+					_raidPointsDelayOk = true;
+					debugLog("hook BattleCommandReceiveRaidPoints ok");
+				} else {
+					debugLog("no BattleCommandReceiveRaidPoints!");
 				}
-				bcrrp.COMMAND_DURATION = 0;
-				bcrrp.FADE_IN_SPEED = 0.1;
-				bcrrp.FADE_OUT_SPEED = 0.1;
-				bcrrp.VISIBLE_DURATION = 200;
-				_raidPointsDelayOk = true;
-				debugLog("reset raid points delay");
 			}
 		} catch (error) {
 			debugLog("battleRaidPointsDelay: " + error);
+		}
+	}
+	/**
+	 * @description 偵測按下攻擊按鍵
+	 */
+	async function attackButtonHook() {
+		try {
+			if (_attackButtonHookOk) return;
+
+			const battleWorld = kh.createInstance("battleWorld");
+			const btnAttack = battleWorld?.battleUI?.AttackButton;
+			if (btnAttack) {
+				const btnAttackProto = Object.getPrototypeOf(btnAttack);
+				const originalSimulateAttack = btnAttackProto.simulateAttack;
+				btnAttackProto.simulateAttackRaw = btnAttackProto.simulateAttack;
+				btnAttackProto.simulateAttack = function () {
+					const result = originalSimulateAttack.call(this);
+					_playerActionTime = new Date();//更新閒置檢查時間
+					return result;
+				}
+				_attackButtonHookOk = true;
+				debugLog("hook AttackButton ok");
+			} else {
+				debugLog("no AttackButton");
+			}
+		} catch (error) {
+			debugLog("attackButtonHook: " + error);
 		}
 	}
 	/**
@@ -6332,6 +6346,22 @@ function onGameApp() {
 			}
 		} catch(error) {
 			debugLog("clearRankingUI: " + error);
+		}
+	}
+	/**
+	 * @description 更新Ranking UI
+	 */
+	async function updateRanking() {
+		if (_questType !== "raid") return;
+		//每5秒更新就好
+		const currentTime = new Date();
+		if (currentTime - _rankingTimestamp > 5000) {
+			_rankingTimestamp = currentTime;
+			if (_isRankingEnabled) {
+				battleGetRanking();
+			} else {
+				clearRankingUI();
+			}
 		}
 	}
 	/**
@@ -6664,11 +6694,13 @@ function onGameApp() {
 		try {
 			const startTime = Date.now();
 			while (Date.now() - startTime < timeout) {
-				if (await isAttackButtonReady()) break;
+				if (await isAttackButtonReady()) return true;
 				await sleep(100);
 			}
+			return false;
 		} catch(error) {
 			debugLog("waitForAttackButton: ", error);
+			return false;
 		}
 	}
 	/**
@@ -6706,20 +6738,17 @@ function onGameApp() {
 			_currentStage = _battleWorld.stage._currentStage;
 			_maxStage = _battleWorld.stage._maxStage;
 			sendTurnText(`(${_currentStage}/${_maxStage}),1`);
+			//更新閒置檢查時間
+			_playerActionTime = new Date();
 			//由戰鬥場次的ID判斷是否為新的戰鬥
 			let currentBattleId = currentScene.getBattleId();
 			if (_battleId === currentBattleId) {
-				const currentScene = cc.director.getRunningScene();
-				if (currentScene) {
-					const questType = currentScene.getQuestType();
-					if (questType && questType === "raid") {
-						await createRankingUI();
-					}
-				}
+				const questType = currentScene.getQuestType();
+				if (questType && questType === "raid") await createRankingUI();
 			} else {
 				_battleId = currentBattleId;//更新戰鬥ID
-				await waitForAttackButton();
-				//更新現在關卡類型
+				if (!await waitForAttackButton()) return;//等待場景完成
+				await attackButtonHook();//取得攻擊開始事件
 				if (!await battleUpdateData()) return;//更新戰鬥資訊
 				if (_autoBattleModeEnabled) await battleAdjustAutoState();//調整自動攻擊模式
 				if (_autoSummonEnabled) await battleAutoSummon();//幻獸攻擊
@@ -6731,12 +6760,11 @@ function onGameApp() {
 				await battleAutoSelectEnemy();//選擇敵方
 				await battleRaidPointsDelay();//測試中的取消功績延遲
 				if (_autoAttackEnabled) await setBattleBurstState(true);//讓burst可用
-				//點擊攻擊
-				const currentState = kh.createInstance("AutoScenarioStateHandler")?.getViewState()?.STATE ?? 0;
+				//點擊攻擊,取得當前自動攻擊設定狀態(0:手動,1:綠,2:紅)
+				const currentState = _battleWorld.autoScenarioHandler._stateHandler.getViewState()?.STATE ?? 0;
 				if (currentState > 0 && _autoAttackEnabled) {
 					await _battleWorld.battleUI.AttackButton.simulateAttack();
 				}
-				_playerActionTime = new Date();
 				//開始監視戰鬥
 				setTimeout(onBattling, 0);
 			}
@@ -6772,45 +6800,34 @@ function onGameApp() {
 			_battleWorld = kh.createInstance("battleWorld");
 			const battleUI = _battleWorld?.battleUI;
 			if(battleUI) {
-				//檢查狀態
 				if (await isAttackButtonReady()) {
-					//攻擊間格時間檢查
-					_playerActionTime = new Date();
 					if (_autoAttackEnabled) {
-						//取得當前狀態 (0:手動,1:綠,2:紅),手動不點擊攻擊
-						const currentState = kh.createInstance("AutoScenarioStateHandler")?.getViewState()?.STATE ?? 0;
+						//取得當前自動攻擊設定狀態 (0:手動,1:綠,2:紅)
+						const currentState = _battleWorld.autoScenarioHandler._stateHandler.getViewState()?.STATE ?? 0;
 						if (currentState > 0) {
-							await _battleWorld.battleUI.AttackButton.simulateAttack();//遊戲的攻擊函式
+							await battleUI.AttackButton.simulateAttack();//遊戲的攻擊函式
 						} else {
-							await customAbilityActivation();//自訂技能施放順序
-							//檢查閒置時間
-							let currentTime = new Date();
-							if (currentTime - _playerActionTime > _autoReloadWaiting) {
-								await battleReload();
-								_playerActionTime = currentTime;
+							await customAbilityActivation();//使用自訂技能施放順序
+							//閒置偵測
+							if (_autoReloadEnabled) {
+								const currentTime = new Date();
+								if (currentTime - _playerActionTime > _autoReloadWaiting) {
+									await battleReload();
+									_playerActionTime = currentTime;
+								}
 							}
 						}
 					}
 				} else if (await isNextButtonReady()) {
-					_battleWorld.battleUI.NextButton.emulateNextButtonPress();
+					battleUI.NextButton.emulateNextButtonPress();
 				} else {
-					await onAutoBattling();//自動攻擊中
+					await onAutoBattling();//自動攻擊中的監測
 					if (await hasNoLivingCharacters()) {
 						if (!await robotRun("died")) return;
 					}
 				}
-				//更新排行
-				if (_questType === "raid") {
-					const currentTime = new Date();
-					if (currentTime - _rankingTimestamp > 5000) {
-						_rankingTimestamp = currentTime;
-						if (_isRankingEnabled) {
-							battleGetRanking();
-						} else {
-							clearRankingUI();
-						}
-					}
-				}
+				//更新玩家排行
+				await updateRanking();
 			}
 			//非戰鬥狀態退出
 			if (_currentSceneName !== "battle") return;
@@ -6836,12 +6853,12 @@ function onGameApp() {
 			}
 			//自動攻擊中太久沒有動作時自動Reload
 			if (_autoReloadEnabled) {
-				//取得當前狀態(0:手動,1:綠,2:紅)
-				const currentState = kh.createInstance("AutoScenarioStateHandler")?.getViewState()?.STATE;
+				//取得當前自動攻擊設定狀態 (0:手動,1:綠,2:紅)
+				const currentState = _battleWorld.autoScenarioHandler._stateHandler.getViewState()?.STATE ?? 0;
 				// 非自動攻擊不作用
 				if (currentState === 0) return;
 				//檢查閒置時間
-				let currentTime = new Date();
+				const currentTime = new Date();
 				if (currentTime - _playerActionTime > _autoReloadWaiting) {
 					await battleReload();
 					_playerActionTime = currentTime;
@@ -6854,91 +6871,91 @@ function onGameApp() {
 		}
 	}
 	/**
+	 * @description 戰鬥動作完成後的伺服器資料回傳
+	 */
+	async function onBattleDataHandled(data) {
+		try {
+			//
+		} catch(error) {
+			debugLog("onBattleDataHandled: " + error);
+		}
+	}
+	/**
 	 * @description 自訂技能施放, 幻獸->黃->綠->藍->優先紅->紅->減CT技->吃藥->攻擊
 	 */
-	//{技能顏色: 預設優先級}
-	const SKILL_COLOR_PRIORITY = {
-		"yellow": 20,
-		"green": 24,
-		"blue": 28,
-		"red": 32
-	};
-	//{英靈ID: {技能索引: 優先級} }
-	const SOUL_SKILL_PRIORITY_MAP = {
-		43: { 0: 10, 1: 12, 2: 40, 3: 14 },//愛迪生
-		50: { 0: 10, 1: 42, 2: 43 }//貝多芬
-	}
-	//{神姬ID: {技能索引: 優先級} }, 優先紅30, 減CT技(個人)36, 減CT技(全部)40, 不使用99
-	const CHAR_SKILL_PRIORITY_MAP = {
-		5167: { 0: 31 },//[戦友想う刃]ルー
-		5230: { 2: 36 },//[決意の護衛者]ラー
-		5243: { 3: 19 },//[聖夜の約束]フレイヤ
-		5248: { 2: 36 },//[百花繚乱の領袖]バアル
-		5249: { 3: 36 },//夢見る怠惰]アマナー
-		5277: { 1: 30 },//[極光の聖戦士]アテン
-		5300: { 2: 40 },//[贈愛の爛漫]シャイターン
-		5311: { 2: 36 },//[仔猫奮迅]キャスパリーグ
-		5327: { 2: 36 },//呂布
-		5351: { 0: 36 },//[愛怨の魔女]ヘーラー
-		5355: { 0: 30, 1: 31 },//[夢贈る堕天使]ベレヌス
-		5373: { 0: 30, 1: 31 },//神代の始祖]イヴ
-		5389: { 2: 40 },//[或る夏の一幕]ファレグ
-		5392: { 0: 36 },//玉泉日和子
-		5397: { 3: 36 },//[蒼雷の庇護者]ステュクス
-		5401: { 3: 36 },//[喫茶浪漫]アマナー
-		5417: { 3: 36 },//[惑溺のふわもふ]モイラ
-		5424: { 0: 30, 1: 30, 2: 36, 3: 37},//[麗衣の代理人]アモン
-		5426: { 3: 36 },//[輝炎の剣]オク
-		5427: { 3: 36 },//[月華の舞巫女]アリサ
-		5435: { 2: 40 },//アルテミス[反心想]
-		5441: { 0: 30, 1: 30 },//[深潜の麗女]アデーレ
-		5444: { 0: 36 },//[波戯の愛霹]シャイターン
-		5454: { 0: 30, 3: 40 },//[神威明星]ルシファー
-		5459: { 3: 36 },//[省察の先に]茨木童子
-		5471: { 0: 30 },//[正月福娘]フィア
-		5472: { 0: 30 },//[砂漠の湯あみ]ジェフティ
-		5486: { 0: 30 },//[HELIX]テトラ
-		9004: { 2: 35, 3: 36 },//バアル[神想真化]
-		9006: { 0: 30, 3: 40 },//アモン[神想真化]
-		9014: { 0: 30 }//ハデス[神想真化]
-	};
 	async function customAbilityActivation() {
+		//{技能顏色: 預設優先級}
+		const SKILL_COLOR_PRIORITY = {
+			"yellow": 20,
+			"green": 24,
+			"blue": 28,
+			"red": 32
+		};
+		//{英靈ID: {技能索引: 優先級} }
+		const SOUL_SKILL_PRIORITY_MAP = {
+			43: { 0: 10, 1: 12, 2: 40, 3: 14 },//愛迪生
+			50: { 0: 10, 1: 42, 2: 43 }//貝多芬
+		}
+		//{神姬ID: {技能索引: 優先級} }, 優先紅30, 減CT技(個人)36, 減CT技(全部)40, 不使用99
+		const CHAR_SKILL_PRIORITY_MAP = {
+			5167: { 0: 31 },//[戦友想う刃]ルー
+			5230: { 2: 36 },//[決意の護衛者]ラー
+			5243: { 3: 19 },//[聖夜の約束]フレイヤ
+			5248: { 2: 36 },//[百花繚乱の領袖]バアル
+			5249: { 3: 36 },//夢見る怠惰]アマナー
+			5277: { 1: 30 },//[極光の聖戦士]アテン
+			5300: { 2: 40 },//[贈愛の爛漫]シャイターン
+			5311: { 2: 36 },//[仔猫奮迅]キャスパリーグ
+			5327: { 2: 36 },//呂布
+			5351: { 0: 36 },//[愛怨の魔女]ヘーラー
+			5355: { 0: 30, 1: 31 },//[夢贈る堕天使]ベレヌス
+			5373: { 0: 30, 1: 31 },//神代の始祖]イヴ
+			5389: { 2: 40 },//[或る夏の一幕]ファレグ
+			5392: { 0: 36 },//玉泉日和子
+			5397: { 3: 36 },//[蒼雷の庇護者]ステュクス
+			5401: { 3: 36 },//[喫茶浪漫]アマナー
+			5417: { 3: 36 },//[惑溺のふわもふ]モイラ
+			5424: { 0: 30, 1: 30, 2: 36, 3: 37},//[麗衣の代理人]アモン
+			5426: { 3: 36 },//[輝炎の剣]オク
+			5427: { 3: 36 },//[月華の舞巫女]アリサ
+			5435: { 2: 40 },//アルテミス[反心想]
+			5441: { 0: 30, 1: 30 },//[深潜の麗女]アデーレ
+			5444: { 0: 36 },//[波戯の愛霹]シャイターン
+			5454: { 0: 30, 3: 40 },//[神威明星]ルシファー
+			5459: { 3: 36 },//[省察の先に]茨木童子
+			5471: { 0: 30 },//[正月福娘]フィア
+			5472: { 0: 30 },//[砂漠の湯あみ]ジェフティ
+			5486: { 0: 30 },//[HELIX]テトラ
+			9004: { 2: 35, 3: 36 },//バアル[神想真化]
+			9006: { 0: 30, 3: 40 },//アモン[神想真化]
+			9014: { 0: 30 }//ハデス[神想真化]
+		};
+		let jobIndex = -1;
+		const abilityArray = [];
+		//貝多芬模式的施放邏輯使用
+		let beethovenMode = false;
+		let beethovenRedCount = 0;//紅色旋律數量
+		let beethovenGreenCount = 0;//綠色旋律數量
+		let beethovenYellowCount = 0;//黃色旋律數量
+		let beethovenBlueCount = 0;//藍色旋律數量
+		let totalMelody = 0;//總共旋律數量
+		let targetColors = [];//目標技能顏色
+		const battleWorld = kh.createInstance("battleWorld");
 		try {
-			const battleWorld = kh.createInstance("battleWorld");
 			if (!battleWorld) return;
-			const characterList = battleWorld.characterList || [];
-			let jonIndex = -1;
-			//貝多芬模式的施放邏輯使用
-			let beethovenMode = false;
-			let beethovenRedCount = 0;
-			let beethovenGreenCount = 0;
-			let beethovenYellowCount = 0;
-			let beethovenBlueCount = 0;
+			//有正在排序的技能先不作用
+			if (battleWorld.bufferedInputController.getLength() > 0) return;
 
+			const characterList = battleWorld.characterList || [];
 			for (let i = 0; i < characterList.length; i++) {
 				const character = characterList[i];
 				if (characterList[i].isJob) {
-					jonIndex=i;
-					//貝多芬時取得身上旋律數量
-					if (character.id === 50) {
-						beethovenMode = true;
-						 const members = battleWorld?.battleStatus?._partyMembers;
-						 if (members && members[i] && members[i].status_effects) {
-							const effects = members[i].status_effects;
-							for (const effect of effects) {
-								switch (effect.id) {
-									case 13848: beethovenRedCount=effect.level;break;
-									case 13849: beethovenGreenCount=effect.level;break;
-									case 13850: beethovenYellowCount=effect.level;break;
-									case 13851: beethovenBlueCount=effect.level;break;
-								}
-							}
-						 }
-					}
+					jobIndex=i;
+					if (character.id === 50) beethovenMode = true;
 				}
 			} 
 			//英靈存在時檢查可用幻獸
-			if (jonIndex > -1) {
+			if (jobIndex > -1) {
 				const summonList = battleWorld?.battleUI?.SummonPanelGroup?.panelList || [];
 				if (summonList.length > 0) {
 					const targetSummon = summonList.find(summon => summon.isUsable());
@@ -6956,54 +6973,13 @@ function onGameApp() {
 					}
 				}
 			}
-			//取得場上可用技能
-			const abilityList = battleWorld.characterAbilityList || [];
-			//貝多芬戰術,先統計技能色彩
-			const totalMelody = beethovenRedCount + beethovenGreenCount + beethovenYellowCount + beethovenBlueCount;
-			let targetColors = [];
+			//貝多芬模式
 			if (beethovenMode) {
-				//先計算各顏色可用技能數量
-				const availableColorCount = { yellow: 0, blue: 0, green: 0, red: 0 };
-				for (let i = 0; i < characterList.length; i++) {
-					if (!characterList[i] || characterList[i].hp === 0 || characterList[i].isJob) continue;
-					const skills = abilityList[i];
-					if (!skills || !Array.isArray(skills)) continue;
-					for (const skill of skills) {
-						if (skill._abilityData.ready && !skill._abilityData.is_banned) {
-							const color = skill._abilityData.color;
-							availableColorCount[color] = (availableColorCount[color] || 0) + 1;
-						}
-					}
-				}
-				if (totalMelody < 3) {
-					if (totalMelody === 0) {
-						//0個旋律時
-						if (availableColorCount.yellow >= 3) targetColors = ["yellow"];
-						else if (availableColorCount.blue >= 3) targetColors = ["blue"];
-						else if (availableColorCount.green >= 3) targetColors = ["green"];
-						else if (availableColorCount.red >= 3) targetColors = ["red"];
-						else targetColors = ["yellow", "blue", "green"];
-					} else if (totalMelody === 1) {
-						//1個旋律時
-						if (beethovenYellowCount === 1) targetColors = ["yellow", "blue", "green"];
-						else if (beethovenBlueCount === 1) targetColors = ["yellow", "blue", "green"];
-						else if (beethovenGreenCount === 1) targetColors = ["yellow", "blue", "green"];
-						else if (beethovenRedCount === 1) targetColors = ["red"];
-					} else if (totalMelody === 2) {
-						//2個旋律時
-						if (beethovenYellowCount === 2) targetColors = ["yellow"];
-						else if (beethovenBlueCount === 2) targetColors = ["blue"];
-						else if (beethovenGreenCount === 2) targetColors = ["green"];
-						else if (beethovenRedCount === 2) targetColors = ["red"];
-						else if (beethovenYellowCount === 1 && beethovenBlueCount === 1) targetColors = ["green"];
-						else if (beethovenYellowCount === 1 && beethovenGreenCount === 1) targetColors = ["blue"];
-						else if (beethovenBlueCount === 1 && beethovenGreenCount === 1) targetColors = ["yellow"];
-						else targetColors = ["yellow", "blue", "green"]; // 防呆保護
-					}
-				}
+				await getBeethovenState();//取得貝多芬旋律數量
+				await getBeethovenColor();//取得貝多芬戰術需要技能顏色
 			}
 			//技能優先級分配
-			const abilityArray = [];
+			const abilityList = battleWorld.characterAbilityList;
 			for (let i = 0; i < characterList.length; i++) {
 				const character = characterList[i];
 				if (!character || character.hp === 0) continue;
@@ -7060,46 +7036,10 @@ function onGameApp() {
 					});
 				}
 			}
-			if (abilityArray.length > 0) {
-				//技能依優先級別排序
-				abilityArray.sort((a, b) => a.priority - b.priority);
-				const attackTargetPos = await battleWorld.getTarget();
-				for (const abilityItem of abilityArray) {
-					const character = characterList[abilityItem.character_index];
-					const abilityPos = abilityItem.ability_index;
-
-					let targetChara = null;
-					if (abilityItem.selectable) {//取得技能指定目標
-						const targetIndex = getPartyTarget(abilityItem.selectableType);
-						if (targetIndex === -1) continue;
-						targetChara = characterList[targetIndex];//取得目標角色
-					}
-					try {//施放技能
-						const bufferedInput = kh.createInstance("AbilityBufferedInput", [character, abilityPos, attackTargetPos, targetChara]);
-						await battleWorld._useAbility(bufferedInput._character,bufferedInput._abilityPos,bufferedInput._attackTargetPos,bufferedInput._abilityTarget);
-						await sleep(300);
-					} catch(error2) {
-						if (error2.bufferedInputLength === 0) {
-							//執行錯誤,先忽略技能
-							const charIndex = abilityItem.character_index;
-							const skillIndex = abilityItem.ability_index;
-							const originalSkills = abilityList[charIndex];
-							if (originalSkills && Array.isArray(originalSkills)) {
-								const failedSkill = originalSkills.find(s => s._index === skillIndex);
-								if (failedSkill && failedSkill._abilityData) {
-									failedSkill._abilityData.ready = false;
-									//debugLog(`fail: character[${charIndex}].ability[${skillIndex}]`);
-								}
-							}
-							continue;
-						} else {
-							debugLog("_useAbility: " + JSON.stringify(error2, null, 2));
-							//await battleReload();//重載戰鬥
-							return;
-						}
-					}
-					return;
-				}
+			//使用技能
+			if (await runAbility()) {
+				_playerActionTime = new Date();//更新閒置檢查時間
+				return;
 			}
 			//評估並執行喝水
 			const cureItems = battleWorld?.battleStatus?._cureItems;
@@ -7117,83 +7057,210 @@ function onGameApp() {
 		} catch(error) {
 			debugLog("customAbilityActivation: " + error);
 		}
-	}
-	/**
-	 * @description 取得技能定對象
-	 * @param {String} abilityType - 技能類型 (例如："revive", "heal", "buff")
-	 * @returns {Number} 若成功回傳技能指定對象索引，否則回傳 -1
-	 */
-	function getPartyTarget(abilityType) {
-		try {
-			const battleWorld = kh.createInstance("battleWorld");
-			//復活,找第一個死亡的角色
-			if (abilityType === "revive") {
-				return battleWorld?.fallenList?.[0]?.index ?? -1;
+		/**
+		 * @description 依優先級施放技能
+		 */
+		async function runAbility() {
+			try {
+				if (abilityArray.length === 0) return false;
+				//依照 priority 由小到大排序
+        		abilityArray.sort((a, b) => a.priority - b.priority);
+
+				const characterList = battleWorld.characterList;
+				const attackTargetPos = await battleWorld.getTarget();
+
+				for (const abilityItem of abilityArray) {
+					const character = characterList[abilityItem.character_index];
+					const abilityPos = abilityItem.ability_index;
+
+					let targetChara = null;
+					if (abilityItem.selectable) {
+						//取得技能指定目標
+						const targetIndex = getPartyTarget(abilityItem.selectableType);
+						if (targetIndex === -1) continue;
+						targetChara = characterList[targetIndex];//取得目標角色
+					}
+					try {//施放技能
+						const bufferedInput = kh.createInstance("AbilityBufferedInput", [character, abilityPos, attackTargetPos, targetChara]);
+						await battleWorld._useAbility(bufferedInput._character,bufferedInput._abilityPos,bufferedInput._attackTargetPos,bufferedInput._abilityTarget);
+						await sleep(300);
+						return true;
+					} catch(error2) {
+						if (error2.bufferedInputLength === 0) {
+							//執行錯誤,先忽略技能
+							const abilityList = battleWorld.characterAbilityList;
+							const originalSkills = abilityList[abilityItem.character_index];
+							if (originalSkills && Array.isArray(originalSkills)) {
+								const failedSkill = originalSkills.find(s => s._index === abilityPos);
+								if (failedSkill && failedSkill._abilityData) {
+									failedSkill._abilityData.ready = false;
+									//debugLog(`fail: character[${charIndex}].ability[${skillIndex}]`);
+								}
+							}
+							continue;//嘗試下一個技能
+						} else {
+							debugLog("_useAbility: " + JSON.stringify(error2, null, 2));
+							//await battleReload();//重載戰鬥
+							return true;
+						}
+					}
+					return true;
+				}
+				return false;
+			} catch(error) {
+				debugLog("runAbility: " + error);
+				return false;
 			}
-			const characterList = battleWorld.characterList;
-			if (!Array.isArray(characterList)) return -1;
-			//增益,找第一個存活的角色
-			if (abilityType === "buff") {
-				return characterList.findIndex(character => character?.hp > 0);
+		}
+		/**
+		 * @description 取得技能定對象
+		 * @param {String} abilityType - 技能類型 (例如："revive", "heal", "buff")
+		 * @returns {Number} 若成功回傳技能指定對象索引，否則回傳 -1
+		 */
+		function getPartyTarget(abilityType) {
+			try {
+				const battleWorld = kh.createInstance("battleWorld");
+				//復活,找第一個死亡的角色
+				if (abilityType === "revive") {
+					return battleWorld?.fallenList?.[0]?.index ?? -1;
+				}
+				const characterList = battleWorld.characterList;
+				if (!Array.isArray(characterList)) return -1;
+				//增益,找第一個存活的角色
+				if (abilityType === "buff") {
+					return characterList.findIndex(character => character?.hp > 0);
+				}
+				//治癒
+				if (abilityType === "heal") {
+					let targetIndex = -1;
+					let lowestHpRatio = 1;
+					characterList.forEach((character, index) => {
+						if (character.hp > 0 && character.hpmax > 0) {
+							const currentHpRatio = character.hp / character.hpmax;
+							if (currentHpRatio < lowestHpRatio) {
+								lowestHpRatio = currentHpRatio;
+								targetIndex = index;
+							}
+						}
+					});
+					return targetIndex;
+				}
+				debugLog("unknown ability type: " + abilityType);
+				return -1;
+			} catch(error) {
+				debugLog("getPartyTarget: " + error);
+				return -1;
 			}
-			//治癒
-			if (abilityType === "heal") {
-				let targetIndex = -1;
-				let lowestHpRatio = 1;
+		}
+		/**
+		 * @description 評估是否需要喝水
+		 * @returns {{ needs: number, needFirst: number, needHow: number, shouldUse: boolean }}
+		 * - needs: 血量低於 50% 且需要喝水的角色總數
+		 * - needFirst: 最優先需要喝水的角色陣列索引
+		 * - needHow: 優先目標的血量比例
+		 * - shouldUse:是否喝水
+		 */
+		function needPotion() {
+			const result = { needs: 0, needFirst: -1, needHow: 1, shouldUse: false};
+			try {
+				const battleWorld = kh.createInstance("battleWorld");
+				const characterList = battleWorld?.characterList;
+				if (!Array.isArray(characterList)) return result;
+
 				characterList.forEach((character, index) => {
-					if (character.hp > 0 && character.hpmax > 0) {
-						const currentHpRatio = character.hp / character.hpmax;
-						if (currentHpRatio < lowestHpRatio) {
-							lowestHpRatio = currentHpRatio;
-							targetIndex = index;
+					const data = character?._avatarData;
+					if (!data || data.hp === 0 || data.hpmax === 0) return;
+
+					const hpRatio = data.hp / data.hpmax;
+					if (hpRatio < 0.5) {
+						result.needs += 1;
+						const isFirstTarget = result.needFirst === -1;
+						const isJobCharacter = data.is_job;
+						const isLowerHpRatio = hpRatio < result.needHow; 
+						if (isFirstTarget || isJobCharacter || isLowerHpRatio) {
+							result.needFirst = index;
+							result.needHow = isJobCharacter ? -1 : hpRatio;
 						}
 					}
 				});
-				return targetIndex;
+				result.shouldUse = (result.needs > 1) || (result.needs > 0 && result.needHow === -1);
+			} catch(error) {
+				debugLog(`needPotion Exception: ${error.message || error}`);
 			}
-			debugLog("unknown ability type: " + abilityType);
-			return -1;
-		} catch(error) {
-			debugLog("getPartyTarget: " + error);
-			return -1;
+			return result;
 		}
-	}
-	/**
-	 * @description 評估是否需要喝水
-	 * @returns {{ needs: number, needFirst: number, needHow: number, shouldUse: boolean }}
-	 * - needs: 血量低於 50% 且需要喝水的角色總數
-	 * - needFirst: 最優先需要喝水的角色陣列索引
-	 * - needHow: 優先目標的血量比例
-	 * - shouldUse:是否喝水
-	 */
-	function needPotion() {
-		const result = { needs: 0, needFirst: -1, needHow: 1, shouldUse: false};
-		try {
-			const battleWorld = kh.createInstance("battleWorld");
-			const characterList = battleWorld?.characterList;
-			if (!Array.isArray(characterList)) return result;
-
-			characterList.forEach((character, index) => {
-				const data = character?._avatarData;
-				if (!data || data.hp === 0 || data.hpmax === 0) return;
-
-				const hpRatio = data.hp / data.hpmax;
-				if (hpRatio < 0.5) {
-					result.needs += 1;
-					const isFirstTarget = result.needFirst === -1;
-					const isJobCharacter = data.is_job;
-					const isLowerHpRatio = hpRatio < result.needHow; 
-					if (isFirstTarget || isJobCharacter || isLowerHpRatio) {
-						result.needFirst = index;
-						result.needHow = isJobCharacter ? -1 : hpRatio;
+		/**
+		 * @description 取得貝多芬身上的旋律數量
+		 */
+		async function getBeethovenState() {
+			try {
+				const members = battleWorld?.battleStatus?._partyMembers;
+				if (members && members[jobIndex] && members[jobIndex].status_effects) {
+					const effects = members[jobIndex].status_effects;
+					for (const effect of effects) {
+						switch (effect.id) {
+							case 13848: beethovenRedCount=effect.level;break;
+							case 13849: beethovenGreenCount=effect.level;break;
+							case 13850: beethovenYellowCount=effect.level;break;
+							case 13851: beethovenBlueCount=effect.level;break;
+						}
+					}
+					//統計旋律
+					totalMelody = beethovenRedCount + beethovenGreenCount + beethovenYellowCount + beethovenBlueCount;
+				}
+			} catch(error) {
+				debugLog("getBeethovenState: " + error);
+			}
+		}
+		/**
+		 * @description 取得貝多芬模式目標技能顏色
+		 */
+		async function getBeethovenColor() {
+			try {
+				const characterList = battleWorld.characterList;
+				const abilityList = battleWorld.characterAbilityList;
+				const availableColorCount = { yellow: 0, blue: 0, green: 0, red: 0 };
+				for (let i = 0; i < characterList.length; i++) {
+					if (!characterList[i] || characterList[i].hp === 0 || characterList[i].isJob) continue;
+					const skills = abilityList[i];
+					if (!skills || !Array.isArray(skills)) continue;
+					for (const skill of skills) {
+						if (skill._abilityData.ready && !skill._abilityData.is_banned) {
+							const color = skill._abilityData.color;
+							availableColorCount[color] = (availableColorCount[color] || 0) + 1;
+						}
 					}
 				}
-			});
-			result.shouldUse = (result.needs > 1) || (result.needs > 0 && result.needHow === -1);
-		} catch(error) {
-			debugLog(`needPotion Exception: ${error.message || error}`);
+				if (totalMelody < 3) {
+					if (totalMelody === 0) {
+						//0個旋律時
+						if (availableColorCount.yellow >= 3) targetColors = ["yellow"];
+						else if (availableColorCount.blue >= 3) targetColors = ["blue"];
+						else if (availableColorCount.green >= 3) targetColors = ["green"];
+						else if (availableColorCount.red >= 3) targetColors = ["red"];
+						else targetColors = ["yellow", "blue", "green"];
+					} else if (totalMelody === 1) {
+						//1個旋律時
+						if (beethovenYellowCount === 1) targetColors = ["yellow", "blue", "green"];
+						else if (beethovenBlueCount === 1) targetColors = ["yellow", "blue", "green"];
+						else if (beethovenGreenCount === 1) targetColors = ["yellow", "blue", "green"];
+						else if (beethovenRedCount === 1) targetColors = ["red"];
+					} else if (totalMelody === 2) {
+						//2個旋律時
+						if (beethovenYellowCount === 2) targetColors = ["yellow"];
+						else if (beethovenBlueCount === 2) targetColors = ["blue"];
+						else if (beethovenGreenCount === 2) targetColors = ["green"];
+						else if (beethovenRedCount === 2) targetColors = ["red"];
+						else if (beethovenYellowCount === 1 && beethovenBlueCount === 1) targetColors = ["green"];
+						else if (beethovenYellowCount === 1 && beethovenGreenCount === 1) targetColors = ["blue"];
+						else if (beethovenBlueCount === 1 && beethovenGreenCount === 1) targetColors = ["yellow"];
+						else targetColors = ["yellow", "blue", "green"]; // 防呆保護
+					}
+				}
+			} catch(error) {
+				debugLog("getBeethovenColor: " + error);
+			}
 		}
-		return result;
 	}
 	/**
 	 * @description 檢查隊伍是否已經全滅
