@@ -1677,8 +1677,10 @@ function onGameApp() {
 	let _battleWorld = null;//戰鬥場景
 	let _language = 0;//遊戲顯示語言, 0:jp, 1:cht, 2:en
 	let _questType = "unknown";//關卡類型
-	let _apItemId = null;//AP道具ID
-	let _bpItemId = null;//BP道具ID
+	let _apItemId = null;//AP道具ID(小聖靈藥)
+	let _ap2ItemId = null;//AP道具ID(大聖靈藥)
+	let _bpItemId = null;//BP道具ID(能量種子)
+	let _bp2ItemId = null;//BP道具ID(能量樹葉)
 	let _battleId = 0;//現在關卡ID
 	let _enemyLevel = 0;//進場時關卡Boss等級
 	let _enemyElement = '';//進場時關卡屬性
@@ -1690,6 +1692,9 @@ function onGameApp() {
 	let _attackButtonHookOk = false;
 	let _lastBattleTimestamp = 0;//記錄上次戰鬥時更新的時間戳記
 	let _lastLoggedDamage = "";//記錄上次印出的傷害訊息
+	let _battlingTimer = null;//用來儲存 setTimeout 的 ID
+	let _isBattlingExecuting = false;//執行鎖，防止非同步重疊
+	let _battlingInstanceCount = 0;//偵測用計數器
 
 	//daily robot資料區
 	const _dailyQuests = [];//待處理的每日戰鬥關卡
@@ -1699,7 +1704,7 @@ function onGameApp() {
 	let _dailyAccessoryQuestId = GM_getValue("dailyAccessory", 87);//每日飾品任務的執行關卡
 
 	//public raid robot資料區
-	let _robotPublicRaidTimerId = null;//避免重復執行
+	let _isPublicRaidSearching = false;//避免重復執行
 	let _publicRaidEnemyHp = GM_getValue("publicRaidEnemyHp", 30.0);//必須高於此血量(%)
 	let _publicRaidParticipants = GM_getValue("publicRaidParticipants", 8);//必須小於此人數
 	let _publicRaidEnemyLevel = GM_getValue("publicRaidEnemyLevel", 109);//必須大於此等級
@@ -2399,13 +2404,13 @@ function onGameApp() {
 			//攔截自己發送的戰鬥指令,檢測自動戰鬥中卡住的情況
 			const originalMethodUseAbility = kh.BattleWorld.prototype.useAbility;
 			kh.BattleWorld.prototype.useAbilityRaw = kh.BattleWorld.prototype.useAbility;
-			kh.BattleWorld.prototype.useAbility = function(character, abilityPos, abilityTarget) {_playerActionTime = new Date();return originalMethodUseAbility.call(this, character, abilityPos, abilityTarget);}
+			kh.BattleWorld.prototype.useAbility = function(character, abilityPos, abilityTarget) {_playerActionTime=new Date();return originalMethodUseAbility.call(this, character, abilityPos, abilityTarget);}
 			const originalMethodSummonAttack = kh.BattleWorld.prototype.summonAttack;
 			kh.BattleWorld.prototype.summonAttackRaw = kh.BattleWorld.prototype.summonAttack;
-			kh.BattleWorld.prototype.summonAttack = function(index) {_playerActionTime = new Date();return originalMethodSummonAttack.call(this, index);}
+			kh.BattleWorld.prototype.summonAttack = function(index) {_playerActionTime=new Date();return originalMethodSummonAttack.call(this, index);}
 			const originalMethodAttack = kh.BattleWorld.prototype.attack;
 			kh.BattleWorld.prototype.attackRaw = kh.BattleWorld.prototype.attack;
-			kh.BattleWorld.prototype.attack = function() {_playerActionTime = new Date();return originalMethodAttack.call(this);}
+			kh.BattleWorld.prototype.attack = function() {_playerActionTime=new Date();return originalMethodAttack.call(this);}
 			//攔截戰鬥訊息
 			kh.RaidMessageHandler.prototype._postLogRaw = kh.RaidMessageHandler.prototype._postLog;
 			const originalPostLog = kh.RaidMessageHandler.prototype._postLog;
@@ -3520,11 +3525,11 @@ function onGameApp() {
 					break;	
 				case "public":
 					switch (stepName) {
-						case "submitOrder":if (!_robotPublicRaidTimerId) _robotPublicRaidTimerId = setTimeout(robotPublicRaidTimer, 0);break;
+						case "submitOrder":if (!_isPublicRaidSearching) {_isPublicRaidSearching = true;setTimeout(robotPublicRaidTimer, 0)};break;
 						case "BattleRescue":break;
-						case "died":if (!_robotPublicRaidTimerId) _robotPublicRaidTimerId = setTimeout(robotPublicRaidTimer, 0);break;
+						case "died":if (!_isPublicRaidSearching) {_isPublicRaidSearching = true;setTimeout(robotPublicRaidTimer, 0)};break;
 						case "onBattleEnd":break;
-						case "onQuestResult":if (!_robotPublicRaidTimerId) _robotPublicRaidTimerId = setTimeout(robotPublicRaidTimer, 0);break;
+						case "onQuestResult":if (!_isPublicRaidSearching) {_isPublicRaidSearching = true;setTimeout(robotPublicRaidTimer, 0)};break;
 						case "onQuestResultTimeout":break;
 					}
 					break;
@@ -4321,24 +4326,39 @@ function onGameApp() {
 	 */
 	async function robotPublicRaidTimer() {
 		try {
-			debugLog("Search some raid...");
+			if (_currentSceneName === "battle") {
+				_isPublicRaidSearching = false;
+				return;
+			}
+			debugLog("search some quest...");
+			_isPublicRaidSearching = true;
 			await refillApBpIfNeeded();
 			await settleUnverifiedBattles();
 			while (_autonomousRobot === "public") {
 				//_publicRaidType
 				//0:一般Raid優先, 1:事件Raid優先
 				if (await joinPublicRaids(false)) {
-					await sleep(1000);
-					_robotPublicRaidTimerId = null;
-					return;
+					debugLog("get a quest...");
+					//等到進場
+					for (let j = 1; j < 150; j++) {
+						await sleep(200);
+						if (_currentSceneName === "battle") break;
+						if (_autonomousRobot !== "public") break;
+					}
+					break;
 				}
-				await sleep(1000);
+				debugLog("no quest...");
+				for (let i = 0; i < 3; i++) {
+					await sleep(1000);
+					if (_autonomousRobot !== "public") break; 
+				}
 			}
 			if (_autonomousRobot !== "public") {debugLog("stop robotPublicRaid");}
 		} catch (error) {
 			debugLog("robotPublicRaidTimer: " + error);
+		} finally {
+			_isPublicRaidSearching = false;
 		}
-		_robotPublicRaidTimerId = null;
 	}
 	/**
 	 * @description 加入公開的RAID關卡,沒有選擇隊伍進場過的會發生錯誤
@@ -4357,7 +4377,10 @@ function onGameApp() {
 			const rCount = raidRes?.body?.max_record_count;
 			if (!rCount || rCount < 1) return false;
 			//存在未結算的戰鬥
-			if (raidRes.body.unverified_battle_exist) await settleUnverifiedBattles();
+			if (raidRes.body.unverified_battle_exist) {
+				await settleUnverifiedBattles();
+				return false;
+			}
 			//依條件尋找關卡
 			const raids = raidRes.body.data;
 			const filteredAndSortedRaids = raids.filter(a => {
@@ -6376,7 +6399,7 @@ function onGameApp() {
 		});
 	}
 	/**
-	 * @description 取得小聖靈藥(AP)與種子(BP)的物品ID
+	 * @description 取得聖靈藥(AP)與能量種子(BP)的物品ID
 	 */
 	async function gatItemApBp() {
 		try {
@@ -6385,7 +6408,9 @@ function onGameApp() {
 				json: { "type": "cure_evolution", page: 1, per_page: 100 }
 			}, "unblock");
 			if (e && e.body && e.body.data) {
+				_ap2ItemId = e.body.data[0].a_item_id;
 				_apItemId = e.body.data[1].a_item_id;
+				_bp2ItemId = e.body.data[2].a_item_id;
 				_bpItemId = e.body.data[3].a_item_id;
 				debugLog("gatItemApBp OK");
 			}
@@ -6449,7 +6474,7 @@ function onGameApp() {
 		}
 	}
 	/**
-	 * @description 消耗種子增加BP
+	 * @description 消耗能量種子增加BP
 	 */
 	async function increaseBP(count = 10) {
 		try {
@@ -7053,8 +7078,10 @@ function onGameApp() {
 				if (currentState > 0 && _autoAttackEnabled) {
 					await _battleWorld.battleUI.AttackButton.simulateAttack();
 				}
+				//有舊的監視先殺掉
+				if (_battlingTimer) clearTimeout(_battlingTimer); 
 				//開始監視戰鬥
-				setTimeout(onBattling, 0);
+				_battlingTimer = setTimeout(onBattling, 0);
 			}
 		} catch(error) {
 			debugLog("onBattleStart: " + error);
@@ -7080,6 +7107,18 @@ function onGameApp() {
 	 * @description 戰鬥中定時觸發的事件
 	 */
 	async function onBattling() {
+		//檢查鎖
+		if (_isBattlingExecuting) {
+			debugLog("[Battle Lock] onBattling is already running, skipping duplicate trigger.");
+			return; 
+		}
+		//上鎖與計數
+		_isBattlingExecuting = true;
+		_battlingInstanceCount++;
+		//偵測重復執行
+		if (_battlingInstanceCount > 1) {
+			debugLog(`[Battle Warning] Concurrent instances detected! Count: ${_battlingInstanceCount}`);
+		}
 		try {
 			//非戰鬥狀態退出
 			if (_currentSceneName !== "battle") {debugLog("battle quit, _currentSceneName mismatch");return;}
@@ -7108,8 +7147,12 @@ function onGameApp() {
 			} else {
 				debugLog(`onBattling error: ${error}`);
 			}
+		} finally {
+			_battlingInstanceCount--;
+			_isBattlingExecuting = false;
+			if (_battlingTimer) clearTimeout(_battlingTimer);
+			if (_currentSceneName === "battle") _battlingTimer = setTimeout(onBattling, 300);
 		}
-		setTimeout(onBattling, 300);
 	}
 	/**
 	 * @description 戰鬥邏輯，負責處理攻擊、閒置檢查與更新
@@ -7387,21 +7430,23 @@ function onGameApp() {
 						targetSkill = originalSkills.find(s => s._index === abilityPos);
 					}
 					try {
-						//提早鎖定技能
-						if (targetSkill?._abilityData) targetSkill._abilityData.ready = false;
-						//不排入駐列直接施放技能
+						_playerActionTime = Date.now();
 						const bufferedInput = kh.createInstance("AbilityBufferedInput", [character, abilityPos, attackTargetPos, targetChara]);
+						//排入駐列施放技能
 						await bufferedInput.execute();
+						//不排入駐列直接施放技能
 						//await battleWorld._useAbility(bufferedInput._character, bufferedInput._abilityPos, bufferedInput._attackTargetPos, bufferedInput._abilityTarget);
 					} catch(error2) {
-						const isEmptyObject = error2 && typeof error2 === "object" && Object.keys(error2).length === 0 && error2.constructor === Object;
-						if (isEmptyObject) {
-							debugLog("ability fail, reload");
-							await battleReload();//技能出錯卡住,reload
+						const errorMsg = (error2 && error2.message) ? error2.message : String(error2);
+						const isDesyncError = errorMsg.includes("characterAbilityList") || errorMsg.includes("undefined") || errorMsg === "{}";
+						if (isDesyncError) {
+							debugLog(`ability fail (${errorMsg}), desync detected, forcing reload`);
+							await battleReload(); // 技能資料不同步, 強制 reload
+							_playerActionTime = Date.now();
 						} else {
-							//if (targetSkill?._abilityData) debugLog(JSON.stringify(targetSkill._abilityData));
-							debugLog("useAbility fail: " + JSON.stringify(error2));
-						}					
+							debugLog(`useAbility fail: ${errorMsg}`);
+							//if (error2 && error2.stack) {debugLog(`[Stack Trace]: ${error2.stack}`);}
+						}
 					}
 					return true;//先不連續執行
 				}
