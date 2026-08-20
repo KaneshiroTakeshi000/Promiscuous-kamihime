@@ -1,6 +1,7 @@
 // ==UserScript==
 // @name         Promiscuous kamihime
 // @description  Unlock hidden potential, satisfy every deep craving.
+// @namespace    https://github.com/KaneshiroTakeshi000/Promiscuous-kamihime
 // @version      0.8964
 // @author       Kaneshiro Takeshi
 
@@ -347,6 +348,9 @@ function onGameFrame() {
 						}
 						break;}
 					default:
+						// let line = document.createElement("div");
+						// line.textContent = e.data;
+						// _debugLogBox.appendChild(line);
 						break;
 				}
 			});
@@ -1645,7 +1649,7 @@ function onGameApp() {
 	let _autoRetryEnabled = GM_getValue("isAutoRetryEnabled", false);//自動再挑戰
 	let _myHelpTarget = GM_getValue("myRaidHelpTarget", "none");//自開Raid自動求援
 	let _othersHelpTarget = GM_getValue("othersRaidHelpTarget", "none");//他開Raid自動求援
-	let _raidHelpLevel = GM_getValue("raidHelpLevel", 55);//小於此Raid Level就自動求援
+	let _raidHelpLevel = GM_getValue("raidHelpLevel", 55);//大於此Raid Level就自動求援
 	let _cocosTimeScale = GM_getValue("gameTimeScale", 1.0);//cocos引擎提速
 	let _cocosFps = GM_getValue("targetFps", 30);//cocos引擎FPS
 	let _httpDelay = GM_getValue("httpDelay", 100);//Http取值回應延遲
@@ -1655,7 +1659,7 @@ function onGameApp() {
 	let _autoBattleModeEnabled = GM_getValue("isAutoBattleModeEnabled", false);//開場自動戰鬥模式
 	let _autoAPBPEnabled = GM_getValue("isAutoApBpRefillEnabled", false);//結算自動補給
 	let _autoReloadEnabled = GM_getValue("isAutoReloadEnabled", false);//自動戰鬥時閒置重整(防卡)
-	const _autoReloadWaiting = 10000;//閒置時間
+	const _autoReloadWaiting = 16000;//閒置時間(毫秒)
 	let _logPacketsEnabled = GM_getValue("isPacketLoggingEnabled", false);//輸出傳輸資訊
 	let _connectingVisible = GM_getValue("hideConnectingScreen", false);//Connecting畫面
 	let _errorPopupVisible = GM_getValue("disableErrorPopups", false);//Error彈窗
@@ -1684,6 +1688,8 @@ function onGameApp() {
 	let _rankingTimestamp = 0;//暫存更新名單的時間
 	let _raidPointsDelayOk = false;//是否已關閉功績顯示
 	let _attackButtonHookOk = false;
+	let _lastBattleTimestamp = 0;//記錄上次戰鬥時更新的時間戳記
+	let _lastLoggedDamage = "";//記錄上次印出的傷害訊息
 
 	//daily robot資料區
 	const _dailyQuests = [];//待處理的每日戰鬥關卡
@@ -1983,58 +1989,111 @@ function onGameApp() {
 			}
 			//廢除路徑檢查機制(防外掛?)
 			kh.Monitor.prototype.checkPath = () => {};
+			//過濾傳送資料
+			kh.postMessageRaw = kh.postMessage;
+			const originalPostMessage = kh.postMessage;
+			kh.postMessage = function(e, r, s) {
+				//if (e !== "setSession") debugLog("postMessage: " + e);
+				if (e === "deployTouchShield") return;//不給遮
+				return originalPostMessage.apply(this, arguments);
+			}
 			//攔截所有發往遊戲伺服器的 GET 請求
 			kh.HttpConnection.prototype.getRaw = kh.HttpConnection.prototype.get;
+			// kh.HttpConnection.prototype.get = function (requestData, reqType = "normal") {
+			// 	_postQueue.push(JSON.stringify( {...requestData, method: 'get'}));flushRequestQueue();
+			// 	this.errorIfNotSetSessionId();
+			// 	return this._wrapFireEvent(function (req) {
+			// 	 	req = this._normalizeId(req);
+			// 	 	const actualUrl = this._URLDelegate.process(req);
+			// 	 	return this._connect.get(actualUrl).fail(this.checkFailedReason.bind(this));
+			// 	}.bind(this), requestData, reqType);
+			// };
 			kh.HttpConnection.prototype.get = function (requestData, reqType = "normal") {
 				_postQueue.push(JSON.stringify( {...requestData, method: 'get'}));flushRequestQueue();
 				this.errorIfNotSetSessionId();
-				return this._wrapFireEvent(function (req) {
+				return this._wrapFireEvent(async (req) => {
 					req = this._normalizeId(req);
 					const actualUrl = this._URLDelegate.process(req);
-					return this._connect.get(actualUrl).fail(this.checkFailedReason.bind(this));
-				}.bind(this), requestData, reqType);
+					try {
+						return await this._connect.get(actualUrl);
+					} catch (error) {
+						return this.checkFailedReason(error);
+					}
+				}, requestData, reqType);
 			};
 			//網路傳輸攔截
 			//攔截所有發往遊戲伺服器的 POST 請求
 			kh.HttpConnection.prototype.postRaw = kh.HttpConnection.prototype.post;
+			// kh.HttpConnection.prototype.post = function (requestData, reqType = "normal") {
+			// 	_postQueue.push(JSON.stringify({...requestData, method: 'post'}));flushRequestQueue();
+			// 	this.errorIfNotSetSessionId();
+			// 	return this._wrapFireEvent(function (req) {
+			// 		req = this._normalizeId(req);
+			// 		const actualUrl = this._URLDelegate.process(req);
+			// 		return this._connect.post(actualUrl)
+			// 		.then(function (response) {
+			// 			PurgeRule.setChangeConnectionFlag();
+			// 			if (_httpDelay > 0) {
+			// 				return Q.delay(_httpDelay).thenResolve(response);
+			// 			} else {
+			// 				return response;
+			// 			}
+			// 		})
+			// 		.fail(this.checkFailedReason.bind(this));
+			// 	}.bind(this), requestData, reqType);
+			// };
 			kh.HttpConnection.prototype.post = function (requestData, reqType = "normal") {
-				_postQueue.push(JSON.stringify({...requestData, method: 'post'}));flushRequestQueue();
+				_postQueue.push(JSON.stringify({ ...requestData, method: 'post' }));flushRequestQueue();
 				this.errorIfNotSetSessionId();
-				return this._wrapFireEvent(function (req) {
+				return this._wrapFireEvent(async (req) => {
 					req = this._normalizeId(req);
 					const actualUrl = this._URLDelegate.process(req);
-					return this._connect.post(actualUrl)
-					.then(function (response) {
+					try {
+						const response = await this._connect.post(actualUrl);
 						PurgeRule.setChangeConnectionFlag();
-						if (_httpDelay > 0) {
-							return Q.delay(_httpDelay).thenResolve(response);
-						} else {
-							return response;
-						}
-					})
-					.fail(this.checkFailedReason.bind(this));
-				}.bind(this), requestData, reqType);
+						if (_httpDelay > 0) {await new Promise(resolve => setTimeout(resolve, _httpDelay));}
+						return response;
+					} catch (error) {
+						return this.checkFailedReason(error);
+					}
+				}, requestData, reqType);
 			};
 			//攔截所有發往遊戲伺服器的 PUT 請求
 			kh.HttpConnection.prototype.putRaw = kh.HttpConnection.prototype.put;
+			// kh.HttpConnection.prototype.put = function (requestData, reqType = "normal") {
+			// 	_postQueue.push(JSON.stringify({...requestData, method: 'put'}));flushRequestQueue();
+			// 	this.errorIfNotSetSessionId();
+			// 	return this._wrapFireEvent(function (req) {
+			// 		req = this._normalizeId(req);
+			// 		const actualUrl = this._URLDelegate.process(req);
+			// 		return this._connect.put(actualUrl)
+			// 			.then(function (response) {
+			// 				PurgeRule.setChangeConnectionFlag();
+			// 				if (_httpDelay > 0) {
+			// 					return Q.delay(_httpDelay).thenResolve(response);
+			// 				} else {
+			// 					return response;
+			// 				}
+			// 			})
+			// 			.fail(this.checkFailedReason.bind(this));
+			// 	}.bind(this), requestData, reqType);
+			// }
 			kh.HttpConnection.prototype.put = function (requestData, reqType = "normal") {
-				_postQueue.push(JSON.stringify({...requestData, method: 'put'}));flushRequestQueue();
+				_postQueue.push(JSON.stringify({ ...requestData, method: 'put' }));flushRequestQueue();
 				this.errorIfNotSetSessionId();
-				return this._wrapFireEvent(function (req) {
+				return this._wrapFireEvent(async (req) => {
 					req = this._normalizeId(req);
 					const actualUrl = this._URLDelegate.process(req);
-					return this._connect.put(actualUrl)
-						.then(function (response) {
-							PurgeRule.setChangeConnectionFlag();
-							if (_httpDelay > 0) {
-								return Q.delay(_httpDelay).thenResolve(response);
-							} else {
-								return response;
-							}
-						})
-						.fail(this.checkFailedReason.bind(this));
-				}.bind(this), requestData, reqType);
-			}
+					try {
+						const response = await this._connect.put(actualUrl);
+						PurgeRule.setChangeConnectionFlag();
+						if (_httpDelay > 0) {await new Promise(resolve => setTimeout(resolve, _httpDelay));}
+						return response;
+					} catch (error) {
+						return this.checkFailedReason(error);
+					}
+				}, requestData, reqType);
+			};
 			//修改預設的重試設定參數
 			kh.HttpConnection.prototype.DEFAULT_RETRY_SETTINGS.minWait = 500;
 			kh.HttpConnection.prototype.DEFAULT_RETRY_SETTINGS.maxCount = 10;
@@ -2098,8 +2157,8 @@ function onGameApp() {
 		try {
 			//自動返回戰鬥
 			if (kh.PopupFactoryComApRestart) {
-				const comApRestartOnPopupOpened = kh.PopupFactoryComApRestart.prototype.onPopupOpened;
 				kh.PopupFactoryComApRestart.prototype.onPopupOpenedRaw = kh.PopupFactoryComApRestart.prototype.onPopupOpened;
+				const comApRestartOnPopupOpened = kh.PopupFactoryComApRestart.prototype.onPopupOpened;
 				kh.PopupFactoryComApRestart.prototype.onPopupOpened = function (popup, ...args) {
 					const result = comApRestartOnPopupOpened.call(this, popup, ...args);
 					setTimeout(() => {simulateTouch(popup.seekWidgetByName('btn_restart'));}, 0);
@@ -2110,8 +2169,8 @@ function onGameApp() {
 			}
 			//結算MVP自動略過
 			if (kh.PopupFactoryMvp) {
-				const mvpOnPopupOpened = kh.PopupFactoryMvp.prototype.onPopupOpened;
 				kh.PopupFactoryMvp.prototype.onPopupOpenedRaw = kh.PopupFactoryMvp.prototype.onPopupOpened;
+				const mvpOnPopupOpened = kh.PopupFactoryMvp.prototype.onPopupOpened;
 				kh.PopupFactoryMvp.prototype.onPopupOpened = function (popup, ...args) {
 					const result = mvpOnPopupOpened.call(this, popup, ...args);
 					setTimeout(() => {simulateTouch(popup.seekWidgetByName('blue_btn'));}, 0);
@@ -2119,6 +2178,30 @@ function onGameApp() {
 				};
 			} else {
 				debugLog(`no kh.PopupFactoryMvp`);
+			}
+			//BP不足
+			if (kh.PopupFactoryComNeedApBp1) {
+				kh.PopupFactoryMvp.prototype.onPopupOpenedRaw = kh.PopupFactoryComNeedApBp1.prototype.onPopupOpened;
+				const comNeedApBp1PopupOpened = kh.PopupFactoryComNeedApBp1.prototype.onPopupOpened;
+				kh.PopupFactoryComNeedApBp1.prototype.onPopupOpened= function (popup, ...args) {
+					const result = comNeedApBp1PopupOpened.call(this, popup, ...args);
+					setTimeout(() => {simulateTouch(popup.seekWidgetByName('blue_btn'));}, 0);
+					return result;
+				};
+			} else {
+				debugLog(`no kh.PopupFactoryComNeedApBp1`);
+			}
+			//BP使用結果
+			if (kh.PopupFactoryComUseResult) {
+				kh.PopupFactoryComUseResult.prototype.onPopupOpenedRaw = kh.PopupFactoryComUseResult.prototype.onPopupOpened;
+				const comUseResultPopupOpened = kh.PopupFactoryComUseResult.prototype.onPopupOpened;
+				kh.PopupFactoryComUseResult.prototype.onPopupOpened= function (popup, ...args) {
+					const result = comUseResultPopupOpened.call(this, popup, ...args);
+					setTimeout(() => {simulateTouch(popup.seekWidgetByName('blue_btn'));}, 0);
+					return result;
+				};
+			} else {
+				debugLog(`no kh.PopupFactoryComUseResult`);
 			}
 			//只監聽,尚未使用的部分
 			const popupConfig = [
@@ -2291,7 +2374,7 @@ function onGameApp() {
 	*/
 	async function initBattleObservers() {
 		try {
-			if (!kh.BattleWorld || !kh.RaidScenarioPlayer || !kh.env || !kh.EnemyStatusBar) {
+			if (!kh.BattleWorld || !kh.RaidMessageHandler || !kh.RaidScenarioPlayer || !kh.env || !kh.EnemyStatusBar) {
 				setTimeout(initBattleObservers, 500);
 				return;
 			}
@@ -2323,10 +2406,44 @@ function onGameApp() {
 			const originalMethodAttack = kh.BattleWorld.prototype.attack;
 			kh.BattleWorld.prototype.attackRaw = kh.BattleWorld.prototype.attack;
 			kh.BattleWorld.prototype.attack = function() {_playerActionTime = new Date();return originalMethodAttack.call(this);}
-			//攔截戰鬥時伺服器資料回應
-			//const originalHandleData = kh.BattleWorld.prototype._handleData;
-			//kh.BattleWorld.prototype._handleDataRaw = kh.BattleWorld.prototype._handleData;
-			//kh.BattleWorld.prototype._handleData = async function(data) {const result = originalHandleData.call(this, data);setTimeout(() => {onBattleDataHandled(data)}, 0);return result;}
+			//攔截戰鬥訊息
+			kh.RaidMessageHandler.prototype._postLogRaw = kh.RaidMessageHandler.prototype._postLog;
+			const originalPostLog = kh.RaidMessageHandler.prototype._postLog;
+			kh.RaidMessageHandler.prototype._postLog = function(e) {
+				const result = originalPostLog.call(this, e);
+				// try {
+				// 	if (e && e.line_3_damage_result) {
+				// 		const damageMatch = e.line_3_damage_result.match(/[\d,]+/);
+				// 		if (damageMatch) {
+				// 			const damageNumber = damageMatch[0];
+				// 			let rawName = e.line_1_action || "";
+				// 			const playerName = rawName.replace(/'s party|的隊伍/g, "").trim();
+				// 			const currentMessage = `${playerName}: ${damageNumber}`;
+				// 			if (currentMessage !== _lastLoggedDamage) {
+				// 				_lastLoggedDamage = currentMessage;
+				// 				debugLog(currentMessage);
+				// 			}
+				// 		}
+				// 	}
+				// }catch (error) {
+				// 	debugLog("_postLog: " + error.message);
+				// }
+				return result;
+			};
+			kh.RaidMessageHandler.prototype.postMessagesRaw = kh.RaidMessageHandler.prototype.postMessages;
+			const originalPostMessages = kh.RaidMessageHandler.prototype.postMessages;
+			kh.RaidMessageHandler.prototype.postMessages = function(e) {
+				const result = originalPostMessages.call(this, e);
+				//debugLog("postMessage: " + JSON.stringify(e));
+				return result;
+			};
+			kh.RaidMessageHandler.prototype._postStampRaw = kh.RaidMessageHandler.prototype._postStamp;
+			const originalPostStamp = kh.RaidMessageHandler.prototype._postStamp;
+			kh.RaidMessageHandler.prototype._postStamp = function(e) {
+				const result = originalPostStamp.call(this, e);
+				//debugLog("postStamp: " + JSON.stringify(e));
+				return result;
+			};
 			//敵方血量顯示
 			const enemyStatusBarProto = kh.EnemyStatusBar.prototype;
 			//初始化紀錄
@@ -2689,36 +2806,6 @@ function onGameApp() {
 		}
 	}
 	/**
-	 * @description 通用掃描工具：讀取並輸出指定物件或原型的所有屬性與函式
-	 * @param {Object} targetPrototype - 想要掃描的目標變數
-	 * @param {String} name - 該目標的名稱，用於顯示在 Log 中方便辨識
-	 */
-	function dumpPrototype(targetPrototype, name) {
-		if (!targetPrototype) {
-			debugLog(`Error: ${name} is undefined or null. Cannot dump.`);
-			return;
-		}
-		const properties = Object.getOwnPropertyNames(targetPrototype);
-		const methodNames = [];
-		const variableNames = [];
-		for (const key of properties) {
-			try {
-				if (typeof targetPrototype[key] === 'function') {
-					methodNames.push(key);
-				} else {
-					variableNames.push(key);
-				}
-			} catch (error) {
-				debugLog(`Warning: Cannot read property '${key}' in ${name}`);
-			}
-		}
-		debugLog(`Dump: ${name}`);
-		debugLog(`Total Properties found: ${properties.length}`);
-		debugLog(`Variables: ${variableNames.join(", ")}`);
-		debugLog(`Methods (Functions): ${methodNames.join(", ")}`);
-		debugLog(`Dump End: ${name}`);
-	}
-	/**
 	 * @description 查詢一個物件底下的所有方法與變數，並印出至除錯視窗
 	 * @param {Object} obj - 要查詢的目標物件
 	 * @param {string} [objName="default"] - 自訂顯示的物件名稱，方便在日誌中辨識
@@ -2819,6 +2906,187 @@ function onGameApp() {
 				}).join("\n");
 		}
 		debugLog(logMsg);
+	}
+	/**
+	 * @description 查詢物件的所有方法與變數，還原為 Class 程式碼並自動下載為 .txt
+	 * @param {Object} obj - 要查詢的目標物件
+	 * @param {string} [objName="UnknownObject"] - 自訂顯示的物件名稱
+	 */
+	async function inspectObjectAndDownload(obj, objName = "UnknownObject") {
+		try {
+			if (obj === null || obj === undefined) {
+				debugLog("[Inspect Error] The target object is null or undefined.");
+				return;
+			}
+			// Determine the class/file name
+			const targetName = obj.className || objName;
+			const allKeys = new Set();
+			let currentObj = obj;
+			// Traverse the prototype chain
+			while (currentObj && currentObj !== Object.prototype) {
+				const keys = Reflect.ownKeys(currentObj);
+				keys.forEach(key => {
+					if (key === 'constructor') return;
+					allKeys.add(key);
+				});
+				currentObj = Object.getPrototypeOf(currentObj);
+			}
+			const methods = [];
+			const variables = [];
+			// Categorize and parse types
+			allKeys.forEach(key => {
+				const keyStr = key.toString();
+				try {
+					const value = obj[key];
+					if (typeof value === 'function') {
+						let funcCode;
+						try {
+							funcCode = Function.prototype.toString.call(value);
+						} catch (error) {
+							funcCode = "[Cannot get source]";
+						}
+						// Format as ES6 Class Method with Tab (\t) indentation for native code
+						if (funcCode.includes("[native code]")) {
+							funcCode = `${keyStr}() { \n\t\t// [Native Function Code]\n\t}`;
+						} else {
+							// Remove 'function' keyword for class syntax
+							funcCode = funcCode.replace(/^async\s+function\s*[a-zA-Z0-9_$]*\s*\(/, `async ${keyStr}(`);
+							funcCode = funcCode.replace(/^function\s*[a-zA-Z0-9_$]*\s*\(/, `${keyStr}(`);
+							// Fallback for arrow functions or already formatted methods
+							if (!funcCode.startsWith(keyStr) && !funcCode.startsWith('async')) {
+								funcCode = `${keyStr} = ${funcCode}`; 
+							}
+						}
+						methods.push({ name: keyStr, code: funcCode });
+					} else {
+						// Format variables
+						let valSuffix = "";
+						if (typeof value === 'string') {
+							valSuffix = ` = "${value.replace(/"/g, '\\"')}";`;
+						} else if (typeof value === 'number' || typeof value === 'boolean') {
+							valSuffix = ` = ${value};`;
+						} else if (Array.isArray(value)) {
+							valSuffix = ` = []; // Array(Size: ${value.length})`;
+						} else if (typeof value === 'object') {
+							if (value === null) {
+								valSuffix = ` = null;`;
+							} else if (value.className) {
+								valSuffix = ` = new ${value.className}();`;
+							} else if (value.constructor && value.constructor.name) {
+								valSuffix = ` = {}; // Object: ${value.constructor.name}`;
+							} else {
+								valSuffix = ` = {}; // Object`;
+							}
+						} else {
+							valSuffix = ` = null; // Type: ${typeof value}`;
+						}
+						variables.push(`this.${keyStr}${valSuffix}`);
+					}
+				} catch (error) {
+					variables.push(`// this.${keyStr} // Read error`);
+				}
+			});
+			// Sorting
+			variables.sort();
+			methods.sort((a, b) => {
+				if (a.name === 'ctor' || a.name === 'constructor') return -1;
+				if (b.name === 'ctor' || b.name === 'constructor') return 1;
+				if (a.name === 'init') return -1;
+				if (b.name === 'init') return 1;
+				return a.name.localeCompare(b.name);
+			});
+			// Beautify and build the final class string using Tabs
+			let classStr = `/**\n * @class ${targetName}\n * @description Auto-generated reconstructed class\n */\n`;
+			classStr += `class ${targetName} {\n`;
+			// Add Constructor with 1 Tab
+			classStr += `\tconstructor() {\n`;
+			if (variables.length > 0) {
+				variables.forEach(v => {
+					// Add variables with 2 Tabs
+					classStr += `\t\t${v}\n`;
+				});
+			}
+			classStr += `\t}\n`;
+			// Add Methods
+			if (methods.length > 0) {
+				methods.forEach(m => {
+					// Indent EVERY line of the method body with 1 Tab (\t)
+					const indentedCode = m.code.split('\n').map(line => {
+						return `\t${line}`;
+					}).join('\n');
+					classStr += `${indentedCode}\n`;
+				});
+			}
+			classStr += `}\n`;
+			// Log success in pure English and trigger download
+			debugLog(`[Inspect Success] Class ${targetName} reconstructed successfully. Check downloads.`);
+			exportToTxtFile(classStr, targetName);
+		} catch (error) {
+			debugLog("inspectObjectAndDownload: " + error);
+		}
+	}
+	/**
+	 * @description Batch create and export specified KH game instances. It generates Class structures and triggers downloads.
+	 */
+	async function inspectAndDownloadAllKhInstances() {
+		// battleUI
+		const battleUI = kh.createInstance("battleUI");
+		if (battleUI) {
+			inspectObjectAndDownload(battleUI, "battleUI");
+			inspectObjectAndDownload(battleUI.CenterPanel, "battleUI_CenterPanel");
+			inspectObjectAndDownload(battleUI.BattleUIHeader, "battleUI_UIHeader");
+
+		} else {
+			debugLog(`[Export Skip] Instance not found: battleUI`);
+		}
+		// Define the default list of instances to export
+		const defaultInstances = [
+			"battleWorld",
+			"questInfo",
+			"raidInfo",
+			"BattleCommandReceiveRaidPoints",
+			"autoScenarioHandler",
+			"AutoScenarioStateHandler",
+			"AutoScenarioTriggerHandler",
+			"RaidMessageHandler",
+			"router",
+			"logger",
+			"HttpConnection",
+			"Monitor",
+			"apiALibrary",
+			"apiAGacha",
+			"apiShop",
+			"apiAWeapons",
+			"apiABattles",
+			"apiAMissions",
+			"apiAAreas",
+			"apiAItems",
+			"apiASummons",
+			"apiAQuests",
+			"apiABanners",
+			"apiAParties",
+			"apiAPlayers",
+			"apiAQuestInfo",
+			"notificationCenter",
+			"myselfInfoRepository",
+			"sceneManager",
+			"tutorialProgress",
+			"AnimationEventHandlerCcs_2_0"
+		];
+		//debugLog(`[Export Started] Preparing to export ${defaultInstances.length} instances.`);
+		defaultInstances.forEach(instanceName => {
+			try {
+				const instance = kh.createInstance(instanceName);
+				if (instance) {
+					inspectObjectAndDownload(instance, instanceName);
+				} else {
+					debugLog(`[Export Skip] Instance not found: ${instanceName}`);
+				}
+			} catch (error) {
+				debugLog(`[Export Error] Failed to process ${instanceName}: ${error.message}`);
+			}
+		});
+		debugLog("[Export Complete] All specified instances have been processed.");
 	}
 	/**
 	 * @description 掃描目前畫面上可見且可點擊的按鈕
@@ -2939,12 +3207,7 @@ function onGameApp() {
 	 */
 	async function executeDeveloperTests() {
 		try {
-			// dumpPrototype(kh.Monitor.prototype, "Monitor");
-			// dumpPrototype(kh.HttpConnection.prototype, "HttpConnection");
-			// dumpPrototype(kh.PlayerGameConfig.prototype, "PlayerGameConfig");
-			// dumpPrototype(kh.Summon.prototype, "Summon");
-			// dumpPrototype(kh.BattleWorld.prototype, "BattleWorld");
-			// dumpPrototype(kh._statisticsRepository.prototype, "statisticsRepository");
+			//await inspectAndDownloadAllKhInstances();
 			//列出所有轉蛋資訊
 			//fetchAllGachaPools();
 			//取得隊伍資料
@@ -2955,6 +3218,9 @@ function onGameApp() {
 			//fetchElementQuest();
 			//fetchMaterialQuest();
 			//fetchAccessoryQuest();
+			//使用藥水
+			//await useSuperPotion();
+			//await usePotion();
 
 			const rescueId = await battleGetRescueId();//救援碼
 			if (rescueId) {
@@ -4062,11 +4328,11 @@ function onGameApp() {
 				//_publicRaidType
 				//0:一般Raid優先, 1:事件Raid優先
 				if (await joinPublicRaids(false)) {
-					await sleep(100);
+					await sleep(1000);
 					_robotPublicRaidTimerId = null;
 					return;
 				}
-				await sleep(500);
+				await sleep(1000);
 			}
 			if (_autonomousRobot !== "public") {debugLog("stop robotPublicRaid");}
 		} catch (error) {
@@ -5313,6 +5579,28 @@ function onGameApp() {
 			debugLog("clear episodes ok");
 		} catch (error) {
 			debugLog("autoPlayUnreadEpisodes: " + error);
+		}
+	}
+
+	/**
+	 * @description Helper function to download string content as a text file
+	 * @param {string} content - The text content to download
+	 * @param {string} fileName - The name of the file
+	 */
+	function exportToTxtFile(content, fileName) {
+		try {
+			const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+			const link = document.createElement("a");
+			link.href = URL.createObjectURL(blob);
+			link.download = `${fileName}.txt`;
+			link.style.display = "none";
+			document.body.appendChild(link);
+			link.click(); // Trigger the download
+			document.body.removeChild(link);
+			URL.revokeObjectURL(link.href);
+			debugLog(`[Download Started] File saved as ${fileName}.txt`);
+		} catch (error) {
+			debugLog("exportToTxtFile: " + error);
 		}
 	}
 	/**
@@ -6673,7 +6961,7 @@ function onGameApp() {
 		}
 	}
 	/**
-	 * @description 檢查Next按鈕啟用
+	 * @description 檢查Next按s鈕啟用
 	 * @returns {boolean} Attack可點擊回傳true,否則回傳false
 	 */
 	async function isNextButtonReady() {
@@ -6794,110 +7082,119 @@ function onGameApp() {
 	async function onBattling() {
 		try {
 			//非戰鬥狀態退出
-			if (_currentSceneName !== "battle") return;
-			if (typeof cc.director.getRunningScene().sceneName !== "undefined") return;
+			if (_currentSceneName !== "battle") {debugLog("battle quit, _currentSceneName mismatch");return;}
+			const currentScene = cc.director.getRunningScene();
+			if (typeof currentScene.sceneName !== "undefined") {debugLog("battle quit, scene transitioning");return;}
 			//注意,換階段時battleWorld是空的
 			_battleWorld = kh.createInstance("battleWorld");
 			const battleUI = _battleWorld?.battleUI;
-			if(battleUI) {
-				if (await isAttackButtonReady()) {
-					if (_autoAttackEnabled) {
-						//取得當前自動攻擊設定狀態 (0:手動,1:綠,2:紅)
-						const currentState = _battleWorld.autoScenarioHandler._stateHandler.getViewState()?.STATE ?? 0;
-						if (currentState > 0) {
-							await battleUI.AttackButton.simulateAttack();//遊戲的攻擊函式
-						} else {
-							await customAbilityActivation();//使用自訂技能施放順序
-							//閒置偵測
-							if (_autoReloadEnabled) {
-								const currentTime = new Date();
-								if (currentTime - _playerActionTime > _autoReloadWaiting) {
-									await battleReload();
-									_playerActionTime = currentTime;
-								}
-							}
-						}
-					}
-				} else if (await isNextButtonReady()) {
-					battleUI.NextButton.emulateNextButtonPress();
-				} else {
-					await onAutoBattling();//自動攻擊中的監測
-					if (await hasNoLivingCharacters()) {
-						if (!await robotRun("died")) return;
-					}
-				}
-				//更新玩家排行
-				await updateRanking();
+			if (battleUI) {
+				//戰鬥中邏輯另外執行, 並限制執行時間
+				const loopResult = await withTimeout(processCoreBattleLogic(), _autoReloadWaiting);
+				if (loopResult === "STOP_LOOP") return;
 			}
-			//非戰鬥狀態退出
-			if (_currentSceneName !== "battle") return;
-			if (typeof cc.director.getRunningScene().sceneName !== "undefined") return;
+			// Final Scene Checks
+			if (_currentSceneName !== "battle") {debugLog("battle quit, _currentSceneName mismatch");return;}
+			if (typeof cc.director.getRunningScene().sceneName !== "undefined") {debugLog("battle quit, scene transitioning");return;}
 		} catch(error) {
-			debugLog(`onBattling error: ${error}`);
+			if (error.message === "EXECUTION_HANG_TIMEOUT") {
+				try {
+					debugLog("executeCoreBattleLogic timeout, reload");
+					await battleReload();
+					_playerActionTime = Date.now();
+				} catch (reloadErr) {
+					debugLog(`Failed to execute battleReload: ${reloadErr.message}`);
+				}
+			} else {
+				debugLog(`onBattling error: ${error}`);
+			}
 		}
 		setTimeout(onBattling, 300);
 	}
 	/**
-	 * @description 自動戰鬥時定時觸發的事件
+	 * @description 戰鬥邏輯，負責處理攻擊、閒置檢查與更新
+	 * @returns {Promise<string|void>} 回傳 "STOP_LOOP" 表示要求停止腳本
 	 */
-	async function onAutoBattling() {
-		try {
-			//檢查敵方數量
-			const enemyList = _battleWorld.enemyList || [];			
-			//太苦了,人都死光
-			if (await hasNoLivingCharacters()) {
-				sendQuestText(`${_questType};${enemyList.length};died`);
-				return;
-			} else {
-				sendQuestText(`${_questType};${enemyList.length}`);
-			}
-			//自動攻擊中太久沒有動作時自動Reload
-			if (_autoReloadEnabled) {
+	async function processCoreBattleLogic() {
+		const currentScene = cc.director.getRunningScene();
+		const battleUI = _battleWorld.battleUI;
+		if (await isAttackButtonReady()) {
+			if (_autoAttackEnabled) {
 				//取得當前自動攻擊設定狀態 (0:手動,1:綠,2:紅)
 				const currentState = _battleWorld.autoScenarioHandler._stateHandler.getViewState()?.STATE ?? 0;
-				// 非自動攻擊不作用
-				if (currentState === 0) return;
-				//檢查閒置時間
-				const currentTime = new Date();
-				if (currentTime - _playerActionTime > _autoReloadWaiting) {
-					await battleReload();
-					_playerActionTime = currentTime;
+				if (currentState > 0) {
+					//自動點Attack
+					await battleUI.AttackButton.simulateAttack();
+				} else {
+					const labelError = currentScene?.seekWidgetByName("a_q_001_process_header_label");
+					if (labelError) {
+						//技能出錯卡住,reload
+						debugLog("ability error, reload");
+						await battleReload();
+						_playerActionTime = Date.now();
+						return;
+					} else {
+						await processAutoBattleTurn();//使用自訂技能施放順序
+					}
 				}
-				//沒有設定自動攻擊時也要去自動點攻擊
-				if (!_autoAttackEnabled) setTimeout(onReloadAttackAgain, 1000);
 			}
-		} catch(error) {
-			debugLog("onAutoBattling: " + error);
+		} else if (await isNextButtonReady()) {
+			//有Next就點
+			battleUI.NextButton.emulateNextButtonPress();
 		}
+		//更新時間戳記,確認執行狀況
+		const currentTime = Date.now();
+		if (currentTime - _lastBattleTimestamp > 1000) {
+			_lastBattleTimestamp = currentTime;
+			//更新顯示時間
+			const textTime = battleUI.BattleUIHeader._timeLimitLabel.getString();//取得畫面中的時間戳記
+			sendSceneText(textTime);
+			// 死亡檢查
+			if (await hasNoLivingCharacters()) {
+				sendQuestText(`${_questType};died`);
+				if (!await robotRun("died")) {
+					debugLog("battle quit, robot start");
+					return "STOP_LOOP";
+				}
+			}
+			//檢查閒置時間
+			if (_autoReloadEnabled && (currentTime - _playerActionTime > _autoReloadWaiting)) {
+				debugLog("normal idle timeout, reload");
+				await battleReload();
+				_playerActionTime = currentTime;
+			}
+		}
+		await updateRanking();//更新玩家排行
 	}
 	/**
-	 * @description 戰鬥動作完成後的伺服器資料回傳
+	 * @description Helper function to add a timeout to any asynchronous task
+	 * @param {Promise} promise - The asynchronous task to execute
+	 * @param {number} ms - The timeout limit in milliseconds
 	 */
-	async function onBattleDataHandled(data) {
-		try {
-			//
-		} catch(error) {
-			debugLog("onBattleDataHandled: " + error);
-		}
+	function withTimeout(promise, ms) {
+		return Promise.race([
+			promise,
+			new Promise((_, reject) => {
+				setTimeout(() => reject(new Error("EXECUTION_HANG_TIMEOUT")), ms);
+			})
+		]);
 	}
 	/**
-	 * @description 自訂技能施放, 幻獸->黃->綠->藍->優先紅->紅->減CT技->吃藥->攻擊
+	 * @description 自訂技能施放與自動戰鬥邏輯
+	 * 預設優先級: 幻獸->黃->綠->藍->優先紅->紅->減CT技->吃藥->攻擊
 	 */
-	async function customAbilityActivation() {
+	async function processAutoBattleTurn() {
 		//{技能顏色: 預設優先級}
-		const SKILL_COLOR_PRIORITY = {
-			"yellow": 20,
-			"green": 24,
-			"blue": 28,
-			"red": 32
+		const SKILL_COLOR_PRIORITIES = {
+			"yellow": 20, "green": 24, "blue": 28, "red": 32
 		};
 		//{英靈ID: {技能索引: 優先級} }
-		const SOUL_SKILL_PRIORITY_MAP = {
+		const SOUL_SKILL_PRIORITIES = {
 			43: { 0: 10, 1: 12, 2: 40, 3: 14 },//愛迪生
 			50: { 0: 10, 1: 42, 2: 43 }//貝多芬
 		}
 		//{神姬ID: {技能索引: 優先級} }, 優先紅30, 減CT技(個人)36, 減CT技(全部)40, 不使用99
-		const CHAR_SKILL_PRIORITY_MAP = {
+		const CHARACTER_SKILL_PRIORITIES = {
 			5167: { 0: 31 },//[戦友想う刃]ルー
 			5230: { 2: 36 },//[決意の護衛者]ラー
 			5243: { 3: 19 },//[聖夜の約束]フレイヤ
@@ -6930,114 +7227,114 @@ function onGameApp() {
 			9006: { 0: 30, 3: 40 },//アモン[神想真化]
 			9014: { 0: 30 }//ハデス[神想真化]
 		};
-		let jobIndex = -1;
-		const abilityArray = [];
+		const MELODY_BUFF_IDS = { red: 13848, green: 13849, yellow: 13850, blue: 13851 };//旋律狀態ID
+
+		let jobIndex = -1;//英靈索引
+		const queuedAbilities = [];//可使用的技能
 		//貝多芬模式的施放邏輯使用
-		let beethovenMode = false;
-		let beethovenRedCount = 0;//紅色旋律數量
-		let beethovenGreenCount = 0;//綠色旋律數量
-		let beethovenYellowCount = 0;//黃色旋律數量
-		let beethovenBlueCount = 0;//藍色旋律數量
-		let totalMelody = 0;//總共旋律數量
-		let targetColors = [];//目標技能顏色
+		const beethovenState = {
+			isActive: false,
+			melodies: { red: 0, green: 0, yellow: 0, blue: 0 },
+			totalMelodies: 0,
+			targetColors: []
+		};
+
 		const battleWorld = kh.createInstance("battleWorld");
+		if (!battleWorld) return;
 		try {
-			if (!battleWorld) return;
 			//有正在排序的技能先不作用
 			if (battleWorld.bufferedInputController.getLength() > 0) return;
-
+			//沒敵人不作用
+			const enemyList = _battleWorld.enemyList || [];
+			if (enemyList.length === 0) return;
+			//尋找英靈並確認是否為貝多芬
 			const characterList = battleWorld.characterList || [];
 			for (let i = 0; i < characterList.length; i++) {
 				const character = characterList[i];
-				if (characterList[i].isJob) {
+				if (character && character.isJob) {
 					jobIndex=i;
-					if (character.id === 50) beethovenMode = true;
+					if (character.id === 50) beethovenState.isActive = true;
+					break;
 				}
 			} 
 			//英靈存在時檢查可用幻獸
 			if (jobIndex > -1) {
 				const summonList = battleWorld?.battleUI?.SummonPanelGroup?.panelList || [];
-				if (summonList.length > 0) {
-					const targetSummon = summonList.find(summon => summon.isUsable());
-					if (targetSummon) {
-						targetSummon.setLocked(true);//提早鎖定
-						try {
-							await battleWorld.summonAttackExecute(targetSummon.index);
-						} catch (error) {
-							if (error && error.bufferedInputLength >= 2) {
-								debugLog("summonAttackExecute fail");
-							}
+				const targetSummon = summonList.find(summon => summon.isUsable());
+				if (targetSummon) {
+					targetSummon.setLocked(true);//提早鎖定
+					try {
+						await battleWorld.summonAttackExecute(targetSummon.index);
+					} catch (error) {
+						if (error && error.bufferedInputLength >= 2) {
+							debugLog("Summon attack execution failed.");
 						}
-						await sleep(300);
-						return;
 					}
+					return;
 				}
 			}
 			//貝多芬模式
-			if (beethovenMode) {
-				await getBeethovenState();//取得貝多芬旋律數量
-				await getBeethovenColor();//取得貝多芬戰術需要技能顏色
+			if (beethovenState.isActive) {
+				updateBeethovenMelodyState();//取得貝多芬旋律數量
+				determineBeethovenTargetColors(characterList, battleWorld.characterAbilityList);//取得貝多芬戰術需要技能顏色
 			}
 			//技能優先級分配
 			const abilityList = battleWorld.characterAbilityList;
+			let characterCount = 0;
 			for (let i = 0; i < characterList.length; i++) {
 				const character = characterList[i];
 				if (!character || character.hp === 0) continue;
+				characterCount++;
 
 				const skills = abilityList[i];
 				if (!skills || !Array.isArray(skills)) continue;
 				const characterId = character.id;
 
 				for (const skill of skills) {
-					if (!skill._abilityData.ready) continue;
-					if (skill._abilityData.is_banned) continue;
-					//一般顏色的準則,越小越優先施放
-					let thePriority = SKILL_COLOR_PRIORITY[skill._abilityData.color] || 99;
-					//角色特殊規則
+					const abilityData = skill._abilityData;
+					if (!abilityData || !abilityData.ready || abilityData.is_banned || abilityData.is_condition_satisfy === false) {
+						continue;
+					}
 					const skillIdx = skill._index;
-
+					const skillColor = abilityData.color || "unknown";
+					let calculatedPriority = SKILL_COLOR_PRIORITIES[skillColor] || 99;//一般顏色的準則,越小越優先施放
+					// 決定優先級邏輯
 					if (character.isJob) {
-						if (SOUL_SKILL_PRIORITY_MAP[characterId] && SOUL_SKILL_PRIORITY_MAP[characterId][skillIdx]) {
-							thePriority = SOUL_SKILL_PRIORITY_MAP[characterId][skillIdx];
+						if (SOUL_SKILL_PRIORITIES[characterId]?.[skillIdx]) {
+							calculatedPriority = SOUL_SKILL_PRIORITIES[characterId][skillIdx];
 						}
-					} else {
-						if (beethovenMode) {						
-							//原來的優先級
-							const charMappedPriority = CHAR_SKILL_PRIORITY_MAP[characterId]?.[skillIdx];
-							if (charMappedPriority === 36 || charMappedPriority === 40) {
-								thePriority = charMappedPriority;//如果是減CT技能,不改變優先級
-							} else if (totalMelody < 3) {
-								if (targetColors.includes(skill._abilityData.color)) {
-									thePriority = 15;//目標顏色
-								} else {
-									thePriority = 55;//會破壞旋律的顏色
-								}
+					} else if (beethovenState.isActive) {						
+						const charMappedPriority = CHARACTER_SKILL_PRIORITIES[characterId]?.[skillIdx];
+						if (charMappedPriority === 36 || charMappedPriority === 40) {
+							calculatedPriority = charMappedPriority;//如果是減CT技能,不改變優先級
+						} else if (beethovenState.totalMelodies < 3) {
+							if (beethovenState.targetColors.includes(skillColor)) {
+								calculatedPriority = 15; // 是需要的目標顏色
 							} else {
-								if (charMappedPriority !== undefined) {
-									thePriority = charMappedPriority;//特殊技能可照常放
-								} else {
-									thePriority = 55;//避免多餘顏色擠掉排好的旋律
-								}
+								calculatedPriority = 55; // 會破壞旋律的顏色，延後施放
 							}
 						} else {
-							if (CHAR_SKILL_PRIORITY_MAP[characterId] && CHAR_SKILL_PRIORITY_MAP[characterId][skillIdx]) {
-								thePriority = CHAR_SKILL_PRIORITY_MAP[characterId][skillIdx];
-							}
+							//3個時
+							calculatedPriority = charMappedPriority !== undefined ? charMappedPriority : 55;
 						}
+					} else if (CHARACTER_SKILL_PRIORITIES[characterId]?.[skillIdx]) {
+						calculatedPriority = CHARACTER_SKILL_PRIORITIES[characterId][skillIdx];
 					}
-					if (thePriority === 99) continue;
-					abilityArray.push({
-						character_index: i,//角色索引
-						ability_index: skillIdx,//技能索引
-						color: skill._abilityData.color,//技能顏色
-						selectable: skill._abilityData.party_member_selectable,//需要指定成員
-						selectableType: skill._abilityData.party_member_selectable_type,//指定類型
-						priority: thePriority//優先級別
+					if (calculatedPriority === 99) continue;
+					queuedAbilities.push({
+						characterIndex: i,
+						abilityIndex: skillIdx,
+						color: skillColor,
+						isSelectable: abilityData.party_member_selectable ?? false,
+						selectableType: abilityData.party_member_selectable_type ?? null,
+						priority: calculatedPriority
 					});
 				}
 			}
+			if (characterCount === 0) return;
 			//使用技能
-			if (await runAbility()) {
+			const hasUsedAbility = await executePrioritizedAbilities();
+			if (hasUsedAbility) {
 				_playerActionTime = new Date();//更新閒置檢查時間
 				return;
 			}
@@ -7045,92 +7342,92 @@ function onGameApp() {
 			const cureItems = battleWorld?.battleStatus?._cureItems;
 			const hasPotion = (cureItems?.[0]?.count ?? 0) > 0;
 			const hasSuperPotion = (cureItems?.[1]?.count ?? 0) > 0;
-			const potionNeed = needPotion();
-			if (hasSuperPotion && potionNeed.shouldUse && !hasPotion) {
+			const potionStatus = evaluatePotionNeeds(characterList);
+
+			if (hasSuperPotion && potionStatus.shouldUse && !hasPotion) {
 				await battleWorld.useItem("cure-medic");
-			} else if (potionNeed.needs > 0 && hasPotion) {
-				await battleWorld.useItem("cure-bottle", potionNeed.needFirst);
+				return;
+			} else if (potionStatus.needs > 0 && hasPotion) {
+				await battleWorld.useItem("cure-bottle", potionStatus.highestPriorityTargetIndex);
+				return;
 			}
 			//點擊攻擊按鍵
 			await battleWorld.battleUI.AttackButton.simulateAttack();
-			await sleep(400);
 		} catch(error) {
-			debugLog("customAbilityActivation: " + error);
+			debugLog("processAutoBattleTurn: " + error);
 		}
 		/**
 		 * @description 依優先級施放技能
+		 * @returns {Promise<boolean>} 是否成功施放了技能
 		 */
-		async function runAbility() {
+		async function executePrioritizedAbilities() {
 			try {
-				if (abilityArray.length === 0) return false;
+				if (queuedAbilities.length === 0) return false;
 				//依照 priority 由小到大排序
-        		abilityArray.sort((a, b) => a.priority - b.priority);
+        		queuedAbilities.sort((a, b) => a.priority - b.priority);
 
 				const characterList = battleWorld.characterList;
 				const attackTargetPos = await battleWorld.getTarget();
 
-				for (const abilityItem of abilityArray) {
-					const character = characterList[abilityItem.character_index];
-					const abilityPos = abilityItem.ability_index;
+				for (const abilityItem of queuedAbilities) {
+					const character = characterList[abilityItem.characterIndex];
+					const abilityPos = abilityItem.abilityIndex;
+					const originalSkills = battleWorld.characterAbilityList[abilityItem.characterIndex];
 
 					let targetChara = null;
-					if (abilityItem.selectable) {
+					if (abilityItem.isSelectable) {
 						//取得技能指定目標
-						const targetIndex = getPartyTarget(abilityItem.selectableType);
+						const targetIndex = findAbilityTarget(abilityItem.selectableType, characterList);
 						if (targetIndex === -1) continue;
 						targetChara = characterList[targetIndex];//取得目標角色
 					}
-					try {//施放技能
-						const bufferedInput = kh.createInstance("AbilityBufferedInput", [character, abilityPos, attackTargetPos, targetChara]);
-						await battleWorld._useAbility(bufferedInput._character,bufferedInput._abilityPos,bufferedInput._attackTargetPos,bufferedInput._abilityTarget);
-						await sleep(300);
-						return true;
-					} catch(error2) {
-						if (error2.bufferedInputLength === 0) {
-							//執行錯誤,先忽略技能
-							const abilityList = battleWorld.characterAbilityList;
-							const originalSkills = abilityList[abilityItem.character_index];
-							if (originalSkills && Array.isArray(originalSkills)) {
-								const failedSkill = originalSkills.find(s => s._index === abilityPos);
-								if (failedSkill && failedSkill._abilityData) {
-									failedSkill._abilityData.ready = false;
-									//debugLog(`fail: character[${charIndex}].ability[${skillIndex}]`);
-								}
-							}
-							continue;//嘗試下一個技能
-						} else {
-							debugLog("_useAbility: " + JSON.stringify(error2, null, 2));
-							//await battleReload();//重載戰鬥
-							return true;
-						}
+					let targetSkill = null;
+					if (Array.isArray(originalSkills)) {
+						targetSkill = originalSkills.find(s => s._index === abilityPos);
 					}
-					return true;
+					try {
+						//提早鎖定技能
+						if (targetSkill?._abilityData) targetSkill._abilityData.ready = false;
+						//不排入駐列直接施放技能
+						const bufferedInput = kh.createInstance("AbilityBufferedInput", [character, abilityPos, attackTargetPos, targetChara]);
+						await bufferedInput.execute();
+						//await battleWorld._useAbility(bufferedInput._character, bufferedInput._abilityPos, bufferedInput._attackTargetPos, bufferedInput._abilityTarget);
+					} catch(error2) {
+						const isEmptyObject = error2 && typeof error2 === "object" && Object.keys(error2).length === 0 && error2.constructor === Object;
+						if (isEmptyObject) {
+							debugLog("ability fail, reload");
+							await battleReload();//技能出錯卡住,reload
+						} else {
+							//if (targetSkill?._abilityData) debugLog(JSON.stringify(targetSkill._abilityData));
+							debugLog("useAbility fail: " + JSON.stringify(error2));
+						}					
+					}
+					return true;//先不連續執行
 				}
 				return false;
 			} catch(error) {
-				debugLog("runAbility: " + error);
+				debugLog("executePrioritizedAbilities: " + error);
 				return false;
 			}
 		}
 		/**
-		 * @description 取得技能定對象
+		 * @description 根據技能類型尋找合適的對象
 		 * @param {String} abilityType - 技能類型 (例如："revive", "heal", "buff")
+		 * @param {Array} characterList - 隊伍角色陣列
 		 * @returns {Number} 若成功回傳技能指定對象索引，否則回傳 -1
 		 */
-		function getPartyTarget(abilityType) {
+		function findAbilityTarget(abilityType, characterList) {
 			try {
-				const battleWorld = kh.createInstance("battleWorld");
 				//復活,找第一個死亡的角色
 				if (abilityType === "revive") {
 					return battleWorld?.fallenList?.[0]?.index ?? -1;
 				}
-				const characterList = battleWorld.characterList;
 				if (!Array.isArray(characterList)) return -1;
 				//增益,找第一個存活的角色
 				if (abilityType === "buff") {
 					return characterList.findIndex(character => character?.hp > 0);
 				}
-				//治癒
+				//治癒,找血量百分比最低
 				if (abilityType === "heal") {
 					let targetIndex = -1;
 					let lowestHpRatio = 1;
@@ -7148,118 +7445,161 @@ function onGameApp() {
 				debugLog("unknown ability type: " + abilityType);
 				return -1;
 			} catch(error) {
-				debugLog("getPartyTarget: " + error);
+				debugLog("findAbilityTarget: " + error);
 				return -1;
 			}
 		}
 		/**
 		 * @description 評估是否需要喝水
-		 * @returns {{ needs: number, needFirst: number, needHow: number, shouldUse: boolean }}
+		 * @param {Array} characterList - 隊伍角色陣列
+		 * @returns {{ needs: number, highestPriorityTargetIndex: number, lowestHpRatio: number, shouldUse: boolean }}
 		 * - needs: 血量低於 50% 且需要喝水的角色總數
-		 * - needFirst: 最優先需要喝水的角色陣列索引
-		 * - needHow: 優先目標的血量比例
-		 * - shouldUse:是否喝水
+		 * - highestPriorityTargetIndex: 最優先需要喝水的角色陣列索引
+		 * - lowestHpRatio: 優先目標的血量比例
+		 * - shouldUse: 是否喝水
 		 */
-		function needPotion() {
-			const result = { needs: 0, needFirst: -1, needHow: 1, shouldUse: false};
+		function evaluatePotionNeeds(characterList) {
+			const status = { needs: 0, highestPriorityTargetIndex: -1, lowestHpRatio: 1, shouldUse: false };
 			try {
-				const battleWorld = kh.createInstance("battleWorld");
-				const characterList = battleWorld?.characterList;
-				if (!Array.isArray(characterList)) return result;
+				if (!Array.isArray(characterList)) return status;
 
 				characterList.forEach((character, index) => {
 					const data = character?._avatarData;
 					if (!data || data.hp === 0 || data.hpmax === 0) return;
 
 					const hpRatio = data.hp / data.hpmax;
-					if (hpRatio < 0.5) {
-						result.needs += 1;
-						const isFirstTarget = result.needFirst === -1;
+					if (hpRatio < 0.5) {//50%
+						status.needs += 1;
+						const isFirstTargetFound = status.highestPriorityTargetIndex === -1;
 						const isJobCharacter = data.is_job;
-						const isLowerHpRatio = hpRatio < result.needHow; 
-						if (isFirstTarget || isJobCharacter || isLowerHpRatio) {
-							result.needFirst = index;
-							result.needHow = isJobCharacter ? -1 : hpRatio;
+						const isLowerHpRatio = hpRatio < status.lowestHpRatio; 
+						if (isFirstTargetFound || isJobCharacter || isLowerHpRatio) {
+							status.highestPriorityTargetIndex = index;
+							status.lowestHpRatio = isJobCharacter ? -1 : hpRatio;
 						}
 					}
 				});
-				result.shouldUse = (result.needs > 1) || (result.needs > 0 && result.needHow === -1);
+				status.shouldUse = (status.needs > 1) || (status.needs > 0 && status.lowestHpRatio === -1);
 			} catch(error) {
-				debugLog(`needPotion Exception: ${error.message || error}`);
+				debugLog(`evaluatePotionNeeds Exception: ${error.message || error}`);
 			}
-			return result;
+			return status;
 		}
 		/**
-		 * @description 取得貝多芬身上的旋律數量
+		 * @description 取得貝多芬身上的旋律數量並更新至 beethovenState
 		 */
-		async function getBeethovenState() {
+		async function updateBeethovenMelodyState() {
 			try {
 				const members = battleWorld?.battleStatus?._partyMembers;
-				if (members && members[jobIndex] && members[jobIndex].status_effects) {
-					const effects = members[jobIndex].status_effects;
-					for (const effect of effects) {
-						switch (effect.id) {
-							case 13848: beethovenRedCount=effect.level;break;
-							case 13849: beethovenGreenCount=effect.level;break;
-							case 13850: beethovenYellowCount=effect.level;break;
-							case 13851: beethovenBlueCount=effect.level;break;
-						}
+				const beethovenStatus = members?.[jobIndex]?.status_effects;
+				if (!beethovenStatus) return;
+				//重置旋律數量
+				beethovenState.melodies = { red: 0, green: 0, yellow: 0, blue: 0 };
+				for (const effect of beethovenStatus) {
+					switch (effect.id) {
+						case MELODY_BUFF_IDS.red:beethovenState.melodies.red = effect.level; break;
+						case MELODY_BUFF_IDS.green:beethovenState.melodies.green = effect.level; break;
+						case MELODY_BUFF_IDS.yellow:beethovenState.melodies.yellow = effect.level; break;
+						case MELODY_BUFF_IDS.blue:beethovenState.melodies.blue = effect.level; break;
 					}
-					//統計旋律
-					totalMelody = beethovenRedCount + beethovenGreenCount + beethovenYellowCount + beethovenBlueCount;
 				}
+				//統計旋律數量
+				const { red, green, yellow, blue } = beethovenState.melodies;
+				beethovenState.totalMelodies = red + green + yellow + blue;
 			} catch(error) {
-				debugLog("getBeethovenState: " + error);
+				debugLog("updateBeethovenMelodyState: " + error);
 			}
 		}
 		/**
 		 * @description 取得貝多芬模式目標技能顏色
+		 * @param {Array} characterList - 隊伍角色陣列
+		 * @param {Array} abilityList - 角色技能狀態陣列
 		 */
-		async function getBeethovenColor() {
+		async function determineBeethovenTargetColors(characterList, abilityList) {
 			try {
-				const characterList = battleWorld.characterList;
-				const abilityList = battleWorld.characterAbilityList;
-				const availableColorCount = { yellow: 0, blue: 0, green: 0, red: 0 };
+				const availableColors = { yellow: 0, blue: 0, green: 0, red: 0 };
 				for (let i = 0; i < characterList.length; i++) {
 					if (!characterList[i] || characterList[i].hp === 0 || characterList[i].isJob) continue;
 					const skills = abilityList[i];
-					if (!skills || !Array.isArray(skills)) continue;
+					if (!Array.isArray(skills)) continue;
 					for (const skill of skills) {
-						if (skill._abilityData.ready && !skill._abilityData.is_banned) {
+						if (skill._abilityData?.ready && !skill._abilityData?.is_banned) {
 							const color = skill._abilityData.color;
-							availableColorCount[color] = (availableColorCount[color] || 0) + 1;
+							if (availableColors[color] !== undefined) {
+								availableColors[color]++;
+							}
 						}
 					}
 				}
-				if (totalMelody < 3) {
-					if (totalMelody === 0) {
-						//0個旋律時
-						if (availableColorCount.yellow >= 3) targetColors = ["yellow"];
-						else if (availableColorCount.blue >= 3) targetColors = ["blue"];
-						else if (availableColorCount.green >= 3) targetColors = ["green"];
-						else if (availableColorCount.red >= 3) targetColors = ["red"];
-						else targetColors = ["yellow", "blue", "green"];
-					} else if (totalMelody === 1) {
-						//1個旋律時
-						if (beethovenYellowCount === 1) targetColors = ["yellow", "blue", "green"];
-						else if (beethovenBlueCount === 1) targetColors = ["yellow", "blue", "green"];
-						else if (beethovenGreenCount === 1) targetColors = ["yellow", "blue", "green"];
-						else if (beethovenRedCount === 1) targetColors = ["red"];
-					} else if (totalMelody === 2) {
-						//2個旋律時
-						if (beethovenYellowCount === 2) targetColors = ["yellow"];
-						else if (beethovenBlueCount === 2) targetColors = ["blue"];
-						else if (beethovenGreenCount === 2) targetColors = ["green"];
-						else if (beethovenRedCount === 2) targetColors = ["red"];
-						else if (beethovenYellowCount === 1 && beethovenBlueCount === 1) targetColors = ["green"];
-						else if (beethovenYellowCount === 1 && beethovenGreenCount === 1) targetColors = ["blue"];
-						else if (beethovenBlueCount === 1 && beethovenGreenCount === 1) targetColors = ["yellow"];
-						else targetColors = ["yellow", "blue", "green"]; // 防呆保護
-					}
+				const melodies = beethovenState.melodies;
+				if (beethovenState.totalMelodies === 0) {
+					if (availableColors.yellow >= 3) beethovenState.targetColors = ["yellow"];
+					else if (availableColors.blue >= 3) beethovenState.targetColors = ["blue"];
+					else if (availableColors.green >= 3) beethovenState.targetColors = ["green"];
+					else if (availableColors.red >= 3) beethovenState.targetColors = ["red"];
+					else beethovenState.targetColors = ["yellow", "blue", "green"];
+					
+				} else if (beethovenState.totalMelodies === 1) {
+					if (melodies.red === 1) beethovenState.targetColors = ["red"];
+					else beethovenState.targetColors = ["yellow", "blue", "green"];
+					
+				} else if (beethovenState.totalMelodies === 2) {
+					if (melodies.yellow === 2) beethovenState.targetColors = ["yellow"];
+					else if (melodies.blue === 2) beethovenState.targetColors = ["blue"];
+					else if (melodies.green === 2) beethovenState.targetColors = ["green"];
+					else if (melodies.red === 2) beethovenState.targetColors = ["red"];
+					else if (melodies.yellow === 1 && melodies.blue === 1) beethovenState.targetColors = ["green"];
+					else if (melodies.yellow === 1 && melodies.green === 1) beethovenState.targetColors = ["blue"];
+					else if (melodies.blue === 1 && melodies.green === 1) beethovenState.targetColors = ["yellow"];
+					else beethovenState.targetColors = ["yellow", "blue", "green"]; // 防呆保護
 				}
 			} catch(error) {
-				debugLog("getBeethovenColor: " + error);
+				debugLog("determineBeethovenTargetColors: " + error);
 			}
+		}
+	}
+	/**
+	 * @description 背景使用大瓶藥水
+	 */
+	async function useSuperPotion() {
+		try {
+			const superPotionCount = _battleWorld?.battleStatus?._cureItems?.[1]?.count ?? 0;
+			if (superPotionCount > 0) {
+				const potionRes = await _httpClient.post({
+					url: `${kh.env.urlRoot}/a_battles/${_battleId}/cure-medic/use`,
+					json: {quest_type: _questType}
+				}, "unblock");
+				if (potionRes && potionRes.body) {
+					debugLog(JSON.stringify(potionRes.body, null, 2));
+					_battleWorld.battleStatus._cureItems[1]--;
+				}
+			} else {
+				debugLog("no super potion");
+			}
+		} catch(error) {
+			debugLog("useSuperPotion: " + error);
+		}
+	}
+	/**
+	 * @description 背景使用小瓶藥水
+	 */
+	async function usePotion(charaIdx) {
+		try {
+			const potionCount = _battleWorld?.battleStatus?._cureItems?.[0]?.count ?? 0;
+			if (potionCount > 0) {
+				const potionRes = await _httpClient.post({
+					url: `${kh.env.urlRoot}/a_battles/${_battleId}/cure-bottle/use`,
+					json: {quest_type: _questType, chara_pos: charaIdx}
+				}, "unblock");
+				if (potionRes && potionRes.body) {
+					debugLog(JSON.stringify(potionRes.body, null, 2));
+					_battleWorld.battleStatus._cureItems[0]--;
+				}
+			} else {
+				debugLog("no potion");
+			}
+		} catch(error) {
+			debugLog("usePotion: " + error);
 		}
 	}
 	/**
@@ -7276,19 +7616,6 @@ function onGameApp() {
 		} catch(error) {
 			debugLog("hasNoLivingCharacters: " + error);
 			return false;
-		}
-	}
-	/**
-	 * @description 戰鬥中閒置被重啟後的自動點擊攻擊
-	 */
-	async function onReloadAttackAgain() {
-		try {
-			if (await isAttackButtonReady()) {
-				await _battleWorld.battleUI.AttackButton.simulateAttack();
-				_playerActionTime = new Date();
-			} 
-		} catch(error) {
-			debugLog("onReloadAttackAgain: " + error);
 		}
 	}
 	/**
