@@ -7147,7 +7147,8 @@ function onGameApp() {
 		if (currentTime - _lastBattleTimestamp > 1000) {
 			_lastBattleTimestamp = currentTime;
 			//更新顯示時間
-			const textTime = battleUI.BattleUIHeader._timeLimitLabel.getString();//取得畫面中的時間戳記
+			let textTime = battleUI?.BattleUIHeader?._timeLimitLabel?.getString();//取得畫面中的時間戳記
+			if (!textTime) textTime = _currentSceneName;
 			sendSceneText(textTime);
 			// 死亡檢查
 			if (await hasNoLivingCharacters()) {
