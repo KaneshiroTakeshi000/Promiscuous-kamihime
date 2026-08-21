@@ -712,7 +712,6 @@ function onGameFrame() {
 			developerTest2Button.onclick = function() {GM_setValue("developerTest2", Date.now());};
 			//點擊時要鎖定的按鍵,防連點
 			_actionButtonsToLock.push(sellItemsButton);
-
 			_actionButtonsToLock.push(clearMissionsButton);
 			_actionButtonsToLock.push(clearPresentsButton);
 			_actionButtonsToLock.push(watchEpisodesButton);
@@ -759,7 +758,7 @@ function onGameFrame() {
 			//Autonomous Robot
 			const autonomousRobotLabel = document.createElement("label");
 			autonomousRobotLabel.setAttribute("style", rowStyle);
-			autonomousRobotLabel.appendChild(document.createTextNode("蘿蔔"));
+			autonomousRobotLabel.appendChild(document.createTextNode("ROBOT"));
 			_autonomousRobotSelect = document.createElement("select");
 			_autonomousRobotSelect.setAttribute("style", selectStyle);
 			applySelectHoverEffect(_autonomousRobotSelect);
@@ -827,7 +826,7 @@ function onGameFrame() {
 			const showDebugCheckbox = document.createElement("input");
 			showDebugCheckbox.type = "checkbox";
 			showDebugCheckbox.checked = true;//預設為開啟
-			const showDebugLabel = createToggleSwitch(showDebugCheckbox, "顯示Console", function() {
+			const showDebugLabel = createToggleSwitch(showDebugCheckbox, "Console", function() {
 				if (_debugWrapper) {
 					if (this.checked) {
 						_debugWrapper.style.display = "flex";
@@ -904,7 +903,7 @@ function onGameFrame() {
 			//求援等級門檻
 			const raidHelpLevelLabel = document.createElement("label");
 			raidHelpLevelLabel.setAttribute("style", rowStyle);
-			raidHelpLevelLabel.appendChild(document.createTextNode("求援等級"));
+			raidHelpLevelLabel.appendChild(document.createTextNode("求援大於"));
 			const raidHelpLevelInput = document.createElement("input");
 			raidHelpLevelInput.type = "number";
 			raidHelpLevelInput.min = "1";
@@ -1033,7 +1032,7 @@ function onGameFrame() {
 			const autoApBpCheckbox = document.createElement("input");
 			autoApBpCheckbox.type = "checkbox";
 			autoApBpCheckbox.checked = GM_getValue("isAutoApBpRefillEnabled", false);
-			const autoApBpLabel = createToggleSwitch(autoApBpCheckbox, "結算補AP|BP", function() {
+			const autoApBpLabel = createToggleSwitch(autoApBpCheckbox, "自動補AP|BP", function() {
 				GM_setValue("isAutoApBpRefillEnabled", this.checked);
 			});
 			advContentArea.appendChild(autoApBpLabel);
@@ -1048,6 +1047,13 @@ function onGameFrame() {
 			applyButtonHoverEffect(getAllDataButton);
 			buttonGrid02.appendChild(getAllDataButton);
 			getAllDataButton.onclick = function() { GM_setValue("getAllData", Date.now()); };
+			//下載遊戲快取中的圖片(預設無作用,太多紀錄會拖慢遊戲,需要時去打開flag)
+			const getCacheImageButton=document.createElement("button");
+			getCacheImageButton.innerHTML='下載圖片';
+			getCacheImageButton.setAttribute("style", baseBtnStyle);
+			applyButtonHoverEffect(getCacheImageButton);
+			buttonGrid02.appendChild(getCacheImageButton);
+			getCacheImageButton.onclick = function() {GM_setValue("getCacheImage", Date.now());};
 			//掃描場景
 			const getSceneButton = document.createElement("button");
 			getSceneButton.innerHTML = '場景掃描';
@@ -1076,22 +1082,21 @@ function onGameFrame() {
 			applyButtonHoverEffect(autoRaidGachaButton);
 			buttonGrid02.appendChild(autoRaidGachaButton);
 			autoRaidGachaButton.onclick = function() {GM_setValue("AutoRaidGacha", Date.now());};
-			//下載遊戲快取中的圖片
-			const getCacheImageButton=document.createElement("button");
-			getCacheImageButton.innerHTML='下載圖片';
-			getCacheImageButton.setAttribute("style", baseBtnStyle);
-			applyButtonHoverEffect(getCacheImageButton);
-			buttonGrid02.appendChild(getCacheImageButton);
-			getCacheImageButton.onclick = function() {GM_setValue("getCacheImage", Date.now());};
 			//下載持有的神姬,武器,幻獸,英靈報表
-
+			const myInfoButton=document.createElement("button");
+			myInfoButton.innerHTML='我的資訊';
+			myInfoButton.setAttribute("style", baseBtnStyle);
+			applyButtonHoverEffect(myInfoButton);
+			buttonGrid02.appendChild(myInfoButton);
+			myInfoButton.onclick = function() {GM_setValue("MyInfo", Date.now());};
 			//點擊時要鎖定的按鍵,防連點
 			_actionButtonsToLock.push(getAllDataButton);
+			_actionButtonsToLock.push(getCacheImageButton);
 			_actionButtonsToLock.push(getSceneButton);
 			_actionButtonsToLock.push(shoppingButton);
 			_actionButtonsToLock.push(autoFreeGachaButton);
 			_actionButtonsToLock.push(autoRaidGachaButton);
-			_actionButtonsToLock.push(getCacheImageButton);
+			_actionButtonsToLock.push(myInfoButton);
 
 			advPanel.appendChild(advContentArea);
 			//右側面板2
@@ -1657,7 +1662,7 @@ function onGameApp() {
 	let _autoStampEnabled = GM_getValue("isAutoEmoteEnabled", false);//開場隨機表情
 	let _isRankingEnabled = GM_getValue("isRankingEnabled", false);//Raid顯示玩家排行
 	let _autoBattleModeEnabled = GM_getValue("isAutoBattleModeEnabled", false);//開場自動戰鬥模式
-	let _autoAPBPEnabled = GM_getValue("isAutoApBpRefillEnabled", false);//結算自動補給
+	let _autoAPBPEnabled = GM_getValue("isAutoApBpRefillEnabled", false);//自動補給AP|BP
 	let _autoReloadEnabled = GM_getValue("isAutoReloadEnabled", false);//自動戰鬥時閒置重整(防卡)
 	const _autoReloadWaiting = 16000;//閒置時間(毫秒)
 	let _logPacketsEnabled = GM_getValue("isPacketLoggingEnabled", false);//輸出傳輸資訊
@@ -1689,7 +1694,7 @@ function onGameApp() {
 	let _playerActionTime = 0;//暫存動作時間,防技能卡住
 	let _rankingTimestamp = 0;//暫存更新名單的時間
 	let _raidPointsDelayOk = false;//是否已關閉功績顯示
-	let _attackButtonHookOk = false;
+	let _attackButtonHookOk = false;//是否已加入點擊攻擊更新時間戳記
 	let _lastBattleTimestamp = 0;//記錄上次戰鬥時更新的時間戳記
 	let _lastLoggedDamage = "";//記錄上次印出的傷害訊息
 	let _battlingTimer = null;//用來儲存 setTimeout 的 ID
@@ -1801,6 +1806,9 @@ function onGameApp() {
 		});
 		GM_addValueChangeListener("getCacheImage", function() {
 			runTaskSafely(downloadInterceptedImages);//下載快取中的圖片
+		});
+		GM_addValueChangeListener("MyInfo", function() {
+			runTaskSafely(downloadMyInformation);//下載我的資訊
 		});
 		GM_addValueChangeListener("getAllData", function() {
 			runTaskSafely(async () => {
@@ -2184,25 +2192,29 @@ function onGameApp() {
 			} else {
 				debugLog(`no kh.PopupFactoryMvp`);
 			}
-			//BP不足
+			//AP|BP不足
 			if (kh.PopupFactoryComNeedApBp1) {
 				kh.PopupFactoryMvp.prototype.onPopupOpenedRaw = kh.PopupFactoryComNeedApBp1.prototype.onPopupOpened;
 				const comNeedApBp1PopupOpened = kh.PopupFactoryComNeedApBp1.prototype.onPopupOpened;
 				kh.PopupFactoryComNeedApBp1.prototype.onPopupOpened= function (popup, ...args) {
 					const result = comNeedApBp1PopupOpened.call(this, popup, ...args);
-					setTimeout(() => {simulateTouch(popup.seekWidgetByName('blue_btn'));}, 0);
+					if (_autoAPBPEnabled) {
+						setTimeout(() => {simulateTouch(popup.seekWidgetByName('blue_btn'));}, 0);
+					}
 					return result;
 				};
 			} else {
 				debugLog(`no kh.PopupFactoryComNeedApBp1`);
 			}
-			//BP使用結果
+			//AP|BP使用結果
 			if (kh.PopupFactoryComUseResult) {
 				kh.PopupFactoryComUseResult.prototype.onPopupOpenedRaw = kh.PopupFactoryComUseResult.prototype.onPopupOpened;
 				const comUseResultPopupOpened = kh.PopupFactoryComUseResult.prototype.onPopupOpened;
 				kh.PopupFactoryComUseResult.prototype.onPopupOpened= function (popup, ...args) {
 					const result = comUseResultPopupOpened.call(this, popup, ...args);
-					setTimeout(() => {simulateTouch(popup.seekWidgetByName('blue_btn'));}, 0);
+					if (_autoAPBPEnabled) {
+						setTimeout(() => {simulateTouch(popup.seekWidgetByName('blue_btn'));}, 0);
+					}
 					return result;
 				};
 			} else {
@@ -2233,11 +2245,9 @@ function onGameApp() {
 				{classRef: kh.PopupFactoryComLeaderChangeDone, name: "PopupFactoryComLeaderChangeDone", desc: "公會長變更完成"},
 				{classRef: kh.PopupFactoryComMemberFire, name: "PopupFactoryComMemberFire", desc: "踢出成員"},
 				{classRef: kh.PopupFactoryComNeedApBp, name: "PopupFactoryComNeedApBp", desc: "AP/BP不足_0"},
-				{classRef: kh.PopupFactoryComNeedApBp1, name: "PopupFactoryComNeedApBp1", desc: "AP/BP不足_1"},
 				{classRef: kh.PopupFactoryComNeedApBp2, name: "PopupFactoryComNeedApBp2", desc: "AP/BP不足_2"},
 				{classRef: kh.PopupFactoryComPartyAutoOrg, name: "PopupFactoryComPartyAutoOrg", desc: "隊伍自動編成"},
 				{classRef: kh.PopupFactoryComRoleChange, name: "PopupFactoryComRoleChange", desc: "位置變更"},
-				{classRef: kh.PopupFactoryComUseResult, name: "PopupFactoryComUseResult", desc: "道具使用結果"},
 				{classRef: kh.PopupFactoryComWeaponSummonAutoOrg, name: "PopupFactoryComWeaponSummonAutoOrg", desc: "武器/幻獸自動編成"},
 				{classRef: kh.PopupFactoryEpiApCheck, name: "PopupFactoryEpiApCheck", desc: "AP消耗確認"},
 				{classRef: kh.PopupFactoryEpiReplayCheck, name: "PopupFactoryEpiReplayCheck", desc: "劇情重播確認"},
@@ -2961,6 +2971,7 @@ function onGameApp() {
 							if (!funcCode.startsWith(keyStr) && !funcCode.startsWith('async')) {
 								funcCode = `${keyStr} = ${funcCode}`; 
 							}
+							funcCode = beautifyMinifiedJS(funcCode);
 						}
 						methods.push({ name: keyStr, code: funcCode });
 					} else {
@@ -3001,8 +3012,7 @@ function onGameApp() {
 				return a.name.localeCompare(b.name);
 			});
 			// Beautify and build the final class string using Tabs
-			let classStr = `/**\n * @class ${targetName}\n * @description Auto-generated reconstructed class\n */\n`;
-			classStr += `class ${targetName} {\n`;
+			let classStr = `class ${targetName} {\n`;
 			// Add Constructor with 1 Tab
 			classStr += `\tconstructor() {\n`;
 			if (variables.length > 0) {
@@ -3029,6 +3039,51 @@ function onGameApp() {
 		} catch (error) {
 			debugLog("inspectObjectAndDownload: " + error);
 		}
+		/**
+		 * A lightweight code beautifier: automatically adds line breaks and indentation.
+		 * @param {string} code - The original minified JavaScript code.
+		 * @returns {string} - The beautified, multi-line JavaScript code.
+		 */
+		function beautifyMinifiedJS(code) {
+			let formatted = '';
+			let indentLevel = 0;
+			let inString = false;
+			let stringChar = '';
+			for (let i = 0; i < code.length; i++) {
+				const char = code[i];
+				// Check if entering or exiting a string to avoid formatting semicolons or braces inside it.
+				if ((char === '"' || char === "'" || char === "`") && code[i - 1] !== '\\') {
+					if (!inString) {
+						inString = true;
+						stringChar = char;
+					} else if (stringChar === char) {
+						inString = false;
+					}
+					formatted += char;
+					continue;
+				}
+				if (inString) {
+					formatted += char;
+					continue;
+				}
+				// Add line breaks and tab indentations based on specific characters.
+				if (char === '{') {
+					indentLevel++;
+					formatted += ' {\n' + '\t'.repeat(indentLevel);
+				} else if (char === '}') {
+					indentLevel = Math.max(0, indentLevel - 1); // Ensure the indentation level doesn't go below zero.
+					formatted += '\n' + '\t'.repeat(indentLevel) + '}';
+				} else if (char === ';') {
+					formatted += ';\n' + '\t'.repeat(indentLevel);
+				} else if (char === ',') {
+					formatted += ', '; // Add a space after commas for better readability.
+				} else {
+					formatted += char;
+				}
+			}
+			// Remove any potential extra empty lines generated during the formatting process.
+			return formatted.replace(/^\s*[\r\n]/gm, '');
+		}
 	}
 	/**
 	 * @description Batch create and export specified KH game instances. It generates Class structures and triggers downloads.
@@ -3046,37 +3101,56 @@ function onGameApp() {
 		}
 		// Define the default list of instances to export
 		const defaultInstances = [
-			"battleWorld",
-			"questInfo",
-			"raidInfo",
-			"BattleCommandReceiveRaidPoints",
-			"autoScenarioHandler",
-			"AutoScenarioStateHandler",
-			"AutoScenarioTriggerHandler",
-			"RaidMessageHandler",
-			"router",
-			"logger",
-			"HttpConnection",
-			"Monitor",
-			"apiALibrary",
-			"apiAGacha",
-			"apiShop",
-			"apiAWeapons",
-			"apiABattles",
-			"apiAMissions",
+			"adviserBalloon",
+			"AnimationEventHandlerCcs_2_0",
 			"apiAAreas",
-			"apiAItems",
-			"apiASummons",
-			"apiAQuests",
 			"apiABanners",
+			"apiABattles",
+			"apiAGacha",
+			"apiAItems",
+			"apiALibrary",
+			"apiAMissions",
 			"apiAParties",
 			"apiAPlayers",
 			"apiAQuestInfo",
-			"notificationCenter",
+			"apiAQuests",
+			"apiASummons",
+			"apiAWeapons",
+			"apiBattle",
+			"apiShop",
+			"autoScenarioHandler",
+			"AutoScenarioStateHandler",
+			"AutoScenarioTriggerHandler",
+			"BattleCommandReceiveRaidPoints",
+			"battleStatus",
+			"battleWorld",
+			"BossAnimation",
+			"bufferedInputController",
+			"characterStatusPanelHandler",
+			"gameSession",
+			"HttpConnection",
+			"logger",
+			"Monitor",
 			"myselfInfoRepository",
+			"notificationCenter",
+			"opStatistics",
+			"playerGameConfig",
+			"playerGameConfigDISettings",
+			"questInfo",
+			"RaidHelpRequestButton",
+			"raidInfo",
+			"RaidMenuButton",
+			"RaidMessageHandler",
+			"RaidScenarioPlayer",
+			"ReviveButton",
+			"router",
+			"scenarioPlayer",
 			"sceneManager",
-			"tutorialProgress",
-			"AnimationEventHandlerCcs_2_0"
+			"stage",
+			"StageProgress",
+			"StampButton",
+			"StartAnimation",
+			"tutorialProgress"
 		];
 		//debugLog(`[Export Started] Preparing to export ${defaultInstances.length} instances.`);
 		defaultInstances.forEach(instanceName => {
@@ -4326,16 +4400,22 @@ function onGameApp() {
 	 */
 	async function robotPublicRaidTimer() {
 		try {
-			if (_currentSceneName === "battle") {
-				_isPublicRaidSearching = false;
-				return;
-			}
-			debugLog("search some quest...");
+			debugLog("search some quest...");		
 			_isPublicRaidSearching = true;
 			await refillApBpIfNeeded();
 			await settleUnverifiedBattles();
+			//必須先脫離戰鬥場景,否則難以偵測已經進場
+			if (_currentSceneName === "battle") {
+				const router = kh.createInstance("router");
+				if (router) {
+					router.navigate("mypage/my_001");
+					for (let j = 1; j < 100; j++) {
+						await sleep(100);
+						if (_currentSceneName !== "battle") break;
+					}
+				}
+			}
 			while (_autonomousRobot === "public") {
-				//_publicRaidType
 				//0:一般Raid優先, 1:事件Raid優先
 				if (await joinPublicRaids(false)) {
 					debugLog("get a quest...");
@@ -5656,6 +5736,21 @@ function onGameApp() {
 		}
 	}
 	/**
+	 * @description 將持有的神姬,幻獸,英靈,武器...等資料轉為檔案下載到本地
+	 */
+	async function downloadMyInformation() {
+		try {
+			debugLog("come soon!");
+			//我的資訊, id,名稱
+			//持有的神姬資料, id,名稱
+			//持有的武器資料, id,名稱,星數
+			//持有的幻獸資料, id,名稱,星數
+			//持有的英靈資料, id,名稱
+		} catch (error) {
+			debugLog("downloadMyInformation: " + error);
+		}
+	}
+	/**
 	 * @description 將持有的神姬資料轉為檔案下載到本地
 	 */
 	async function exportOwnedHimeData() {
@@ -6540,7 +6635,7 @@ function onGameApp() {
 	 */
 	async function battleSendHelp() {
 		try {
-			if (_enemyLevel < _raidHelpLevel) return;
+			if (_enemyLevel <= _raidHelpLevel) return;
 
 			const questInfo = kh.createInstance("questInfo");
 			if (questInfo._isOwnRaid) {
@@ -7440,7 +7535,7 @@ function onGameApp() {
 						const errorMsg = (error2 && error2.message) ? error2.message : String(error2);
 						const isDesyncError = errorMsg.includes("characterAbilityList") || errorMsg.includes("undefined") || errorMsg === "{}";
 						if (isDesyncError) {
-							debugLog(`ability fail (${errorMsg}), desync detected, forcing reload`);
+							debugLog(`ability fail, forcing reload`);
 							await battleReload(); // 技能資料不同步, 強制 reload
 							_playerActionTime = Date.now();
 						} else {
@@ -7712,7 +7807,7 @@ function onGameApp() {
 			//新場景定時器
 			switch (_currentSceneName) {
 				case "q_result"://結算
-					//結算自動補APBP
+					//自動補APBP
 					if (_autoAPBPEnabled) {await refillApBpIfNeeded();}
 					//等待場景完成
 					if (await waitingQuestInfo()) {
