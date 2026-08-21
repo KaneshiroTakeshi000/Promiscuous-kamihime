@@ -7330,7 +7330,7 @@ function onGameApp() {
 		//{英靈ID: {技能索引: 優先級} }
 		const SOUL_SKILL_PRIORITIES = {
 			43: { 0: 10, 1: 12, 2: 40, 3: 14 },//愛迪生
-			50: { 0: 10, 1: 42, 2: 43 }//貝多芬
+			50: { 0: 10, 1: 49, 2: 50, 4: 14 }//貝多芬
 		}
 		//{神姬ID: {技能索引: 優先級} }, 優先紅30, 減CT技(個人)36, 減CT技(全部)40, 不使用99
 		const CHARACTER_SKILL_PRIORITIES = {
@@ -7435,22 +7435,24 @@ function onGameApp() {
 						continue;
 					}
 					const skillIdx = skill._index;
-					const skillColor = abilityData.color || "unknown";
+					let skillColor = abilityData.color || "unknown";
 					let calculatedPriority = SKILL_COLOR_PRIORITIES[skillColor] || 99;//一般顏色的準則,越小越優先施放
 					// 決定優先級邏輯
 					if (character.isJob) {
 						if (SOUL_SKILL_PRIORITIES[characterId]?.[skillIdx]) {
 							calculatedPriority = SOUL_SKILL_PRIORITIES[characterId][skillIdx];
 						}
+						//貝多芬本身技能不計入旋律計算
+						if (beethovenState.isActive) skillColor="unknown";
 					} else if (beethovenState.isActive) {						
 						const charMappedPriority = CHARACTER_SKILL_PRIORITIES[characterId]?.[skillIdx];
 						if (charMappedPriority === 36 || charMappedPriority === 40) {
 							calculatedPriority = charMappedPriority;//如果是減CT技能,不改變優先級
 						} else if (beethovenState.totalMelodies < 3) {
 							if (beethovenState.targetColors.includes(skillColor)) {
-								calculatedPriority = 15; // 是需要的目標顏色
+								calculatedPriority = 15;//是需要的目標顏色
 							} else {
-								calculatedPriority = 55; // 會破壞旋律的顏色，延後施放
+								calculatedPriority = 45;//會破壞旋律的顏色，延後施放
 							}
 						} else {
 							//3個時
