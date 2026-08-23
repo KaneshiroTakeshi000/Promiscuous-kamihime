@@ -5430,7 +5430,37 @@ function onGameApp() {
 	async function reclaimAccessories() {
 		try {
 			const targetAccessoriesIds = [];
-			//let logMsg = `\n`;
+			const ssrEarrings2KeptMap = {};
+			//要刪除的SSR
+			const ssrAccessories = [
+				401,402,403,404,405,406,
+				407,408,409,410,411,412,
+				413,414,415,416,417,418,
+				419,420,421,422,423,424,
+				425,426,427,428,429,430,
+				431,432,433,434,435,436,
+				1101,1102,1103,1104,1105,1106,
+				1107,1108,1109,1110,1111,1112,
+				1113,1114,1115,1116,1117,1118,
+				1119,1120,1121,1122,1123,1124,
+				1125,1126,1127,1128,1129,1130,
+				1131,1132,1133,1134,1135,1136,
+				1221,1222,1223,1224,1225,1226,
+				1231,1232,1233,1234,1235,1236,
+				1241,1242,1243,1244,1245,1246,
+				1251,1252,1253,1254,1255,1256,
+				1331,1332,1333,1334,1335,1336,
+				1341,1342,1343,1344,1345,1346,
+				2001,2002,2003,2004,2005,2006,
+				3001,3002,3003,3004,3005,3006];
+			const ssrCrown1 = [1201,1202,1203,1204,1205,1206];//惡魔王冠
+			const ssrBracelet1 = [1211,1212,1213,1214,1215,1216];//惡魔手鐲
+			const ssrCrown2 = [1301,1302,1303,1304,1305,1306];//天使王冠
+			const ssrNecklace2 = [1351,1352,1353,1354,1355,1356];//天使項鍊
+			const ssrBracelet2 = [1311,1312,1313,1314,1315,1316];//天使手鐲
+			const ssrEarrings2 = [1321,1322,1323,1324,1325,1326];//天使耳環
+			//護符 3001~3006
+			//懷錶 2001~2006
 			for (let pageIndex = 1; pageIndex <= 60; pageIndex++) {
 				try {
 					//求取得飾品清單
@@ -5443,8 +5473,6 @@ function onGameApp() {
 						if (accessoriesList.length === 0) break;
 						//篩選
 						accessoriesList.forEach(item => {
-							//logMsg += JSON.stringify(item, null, 2);
-							//logMsg += (`aid:` + item.accessory_id + ` ,name:` + item.name + ` ,category:` + item.category + ` ,brand:` + item.brand + `\n`)
 							if (item.is_equipped) return;
 							if (item.is_locked) return;
 							if (item.level > 1) return;
@@ -5454,35 +5482,11 @@ function onGameApp() {
 								return;
 							}
 							//要刪除的SSR
-							const ssrAccessories = [
-								401,402,403,404,405,406,
-								407,408,409,410,411,412,
-								413,414,415,416,417,418,
-								419,420,421,422,423,424,
-								425,426,427,428,429,430,
-								431,432,433,434,435,436,
-								1101,1102,1103,1104,1105,1106,
-								1107,1108,1109,1110,1111,1112,
-								1113,1114,1115,1116,1117,1118,
-								1119,1120,1121,1122,1123,1124,
-								1125,1126,1127,1128,1129,1130,
-								1131,1132,1133,1134,1135,1136,
-								1221,1222,1223,1224,1225,1226,
-								1231,1232,1233,1234,1235,1236,
-								1241,1242,1243,1244,1245,1246,
-								1251,1252,1253,1254,1255,1256,
-								1331,1332,1333,1334,1335,1336,
-								1341,1342,1343,1344,1345,1346,
-								2001,2002,2003,2004,2005,2006,
-								3001,3002,3003,3004,3005,3006];
 							if (ssrAccessories.includes(item.accessory_id)) {
 								targetAccessoriesIds.push(item.a_accessory_id);
 								return;
 							}
-							//護符 3001~3006
-							//懷錶 2001~2006
 							//惡魔王冠, 只留二攻要檢查 effect_rate 數值
-							const ssrCrown1 = [1201,1202,1203,1204,1205,1206];
 							if (ssrCrown1.includes(item.accessory_id)) {
 								if (item.sub_effects[0].name !== item.sub_effects[1].name) {
 									targetAccessoriesIds.push(item.a_accessory_id);
@@ -5490,7 +5494,6 @@ function onGameApp() {
 								}
 							}
 							//惡魔手鐲, 只留四攻要檢查 effect_rate 數值
-							const ssrBracelet1 = [1211,1212,1213,1214,1215,1216];
 							if (ssrBracelet1.includes(item.accessory_id)) {
 								if (item.sub_effects[0].name !== item.sub_effects[1].name) {
 									targetAccessoriesIds.push(item.a_accessory_id);
@@ -5501,7 +5504,6 @@ function onGameApp() {
 								}
 							}
 							//天使王冠, 只留二攻要檢查 effect_rate 數值
-							const ssrCrown2 = [1301,1302,1303,1304,1305,1306];
 							if (ssrCrown2.includes(item.accessory_id)) {
 								if (item.sub_effects[0].name !== item.sub_effects[1].name) {
 									targetAccessoriesIds.push(item.a_accessory_id);
@@ -5509,7 +5511,6 @@ function onGameApp() {
 								}
 							}
 							//天使項鍊 
-							const ssrNecklace2 = [1351,1352,1353,1354,1355,1356];
 							if (ssrNecklace2.includes(item.accessory_id)) {
 								if (item.sub_effects[0].name !== item.sub_effects[2].name) {
 									targetAccessoriesIds.push(item.a_accessory_id);
@@ -5517,7 +5518,6 @@ function onGameApp() {
 								}
 							}	
 							//天使手鐲
-							const ssrBracelet2 = [1311,1312,1313,1314,1315,1316];
 							if (ssrBracelet2.includes(item.accessory_id)) {
 								if (item.sub_effects[0].name !== item.sub_effects[2].name) {
 									targetAccessoriesIds.push(item.a_accessory_id);
@@ -5525,12 +5525,16 @@ function onGameApp() {
 								}
 							}
 							//天使耳環 
-							const ssrEarrings2 = [1321,1322,1323,1324,1325,1326];
 							if (ssrEarrings2.includes(item.accessory_id)) {
 								if (item.sub_effects[0].name !== item.sub_effects[1].name) {
 									targetAccessoriesIds.push(item.a_accessory_id);
 									return;
 								}
+								const groupKey = item.accessory_id + "_" + item.sub_effects[0].name;
+								if (!ssrEarrings2KeptMap[groupKey]) {
+									ssrEarrings2KeptMap[groupKey] = [];
+								}
+								ssrEarrings2KeptMap[groupKey].push(item.a_accessory_id);
 							}
 						});
 					}
@@ -5540,7 +5544,14 @@ function onGameApp() {
 					break;
 				}
 			}
-			//debugLog(logMsg);
+			//每種效果的天使耳環最多留6個
+			for (const groupKey in ssrEarrings2KeptMap) {
+				const list = ssrEarrings2KeptMap[groupKey];
+				if (list.length > 6) {
+					const excessIds = list.slice(6);
+					targetAccessoriesIds.push(...excessIds);
+				}
+			}
 			debugLog("accessories count: " + targetAccessoriesIds.length);
 			if (targetAccessoriesIds.length === 0) return;
 			//還原
@@ -7319,52 +7330,51 @@ function onGameApp() {
 		]);
 	}
 	/**
-	 * @description 自訂技能施放與自動戰鬥邏輯
-	 * 預設優先級: 幻獸->黃->綠->藍->優先紅->紅->減CT技->吃藥->攻擊
+	 * @description 自訂技能施放的戰鬥邏輯
+	 * 預設優先級: 幻獸->綠->吃藥->黃->藍->優先紅->紅->減CT技->攻擊
 	 */
 	async function processAutoBattleTurn() {
+		//優先級:英靈區1~29, 綠30~39, 黃40~49, 藍50~59, 紅60~69, 減CT技(個人)70, 減CT技(全部)80, 不使用99
 		//{技能顏色: 預設優先級}
-		const SKILL_COLOR_PRIORITIES = {
-			"yellow": 20, "green": 24, "blue": 28, "red": 32
-		};
+		const SKILL_COLOR_PRIORITIES = {"green": 35, "yellow": 45, "blue": 55, "red": 65};
 		//{英靈ID: {技能索引: 優先級} }
 		const SOUL_SKILL_PRIORITIES = {
-			43: { 0: 10, 1: 12, 2: 40, 3: 14 },//愛迪生
-			50: { 0: 10, 1: 49, 2: 50, 4: 14 }//貝多芬
+			43: { 0: 10, 1: 12, 2: 81, 3: 14 },//愛迪生
+			50: { 0: 5, 1: 85, 2: 86, 4: 8 }//貝多芬
 		}
-		//{神姬ID: {技能索引: 優先級} }, 優先紅30, 減CT技(個人)36, 減CT技(全部)40, 不使用99
+		//{神姬ID: {技能索引: 優先級} }
 		const CHARACTER_SKILL_PRIORITIES = {
-			5167: { 0: 31 },//[戦友想う刃]ルー
-			5230: { 2: 36 },//[決意の護衛者]ラー
-			5243: { 3: 19 },//[聖夜の約束]フレイヤ
-			5248: { 2: 36 },//[百花繚乱の領袖]バアル
-			5249: { 3: 36 },//夢見る怠惰]アマナー
-			5277: { 1: 30 },//[極光の聖戦士]アテン
-			5300: { 2: 40 },//[贈愛の爛漫]シャイターン
-			5311: { 2: 36 },//[仔猫奮迅]キャスパリーグ
-			5327: { 2: 36 },//呂布
-			5351: { 0: 36 },//[愛怨の魔女]ヘーラー
-			5355: { 0: 30, 1: 31 },//[夢贈る堕天使]ベレヌス
-			5373: { 0: 30, 1: 31 },//神代の始祖]イヴ
-			5389: { 2: 40 },//[或る夏の一幕]ファレグ
-			5392: { 0: 36 },//玉泉日和子
-			5397: { 3: 36 },//[蒼雷の庇護者]ステュクス
-			5401: { 3: 36 },//[喫茶浪漫]アマナー
-			5417: { 3: 36 },//[惑溺のふわもふ]モイラ
-			5424: { 0: 30, 1: 30, 2: 36, 3: 37},//[麗衣の代理人]アモン
-			5426: { 3: 36 },//[輝炎の剣]オク
-			5427: { 3: 36 },//[月華の舞巫女]アリサ
-			5435: { 2: 40 },//アルテミス[反心想]
-			5441: { 0: 30, 1: 30 },//[深潜の麗女]アデーレ
-			5444: { 0: 36 },//[波戯の愛霹]シャイターン
-			5454: { 0: 30, 3: 40 },//[神威明星]ルシファー
-			5459: { 3: 36 },//[省察の先に]茨木童子
-			5471: { 0: 30 },//[正月福娘]フィア
-			5472: { 0: 30 },//[砂漠の湯あみ]ジェフティ
-			5486: { 0: 30 },//[HELIX]テトラ
-			9004: { 2: 35, 3: 36 },//バアル[神想真化]
-			9006: { 0: 30, 3: 40 },//アモン[神想真化]
-			9014: { 0: 30 }//ハデス[神想真化]
+			5167: { 0: 64 },//[戦友想う刃]ルー
+			5230: { 2: 70 },//[決意の護衛者]ラー
+			5243: { 3: 44 },//[聖夜の約束]フレイヤ
+			5248: { 2: 70 },//[百花繚乱の領袖]バアル
+			5249: { 3: 70 },//[夢見る怠惰]アマナー
+			5277: { 1: 61 },//[極光の聖戦士]アテン
+			5300: { 2: 80 },//[贈愛の爛漫]シャイターン
+			5311: { 2: 70 },//[仔猫奮迅]キャスパリーグ
+			5327: { 2: 70 },//呂布
+			5351: { 0: 70 },//[愛怨の魔女]ヘーラー
+			5355: { 0: 61, 1: 62 },//[夢贈る堕天使]ベレヌス
+			5373: { 0: 61, 1: 62 },//[神代の始祖]イヴ
+			5389: { 2: 80 },//[或る夏の一幕]ファレグ
+			5392: { 0: 70 },//玉泉日和子
+			5397: { 3: 70 },//[蒼雷の庇護者]ステュクス
+			5401: { 3: 70 },//[喫茶浪漫]アマナー
+			5417: { 3: 70 },//[惑溺のふわもふ]モイラ
+			5424: { 0: 61, 1: 61, 2: 70, 3: 71},//[麗衣の代理人]アモン
+			5426: { 3: 70 },//[輝炎の剣]オク
+			5427: { 3: 70 },//[月華の舞巫女]アリサ
+			5435: { 2: 80 },//アルテミス[反心想]
+			5441: { 0: 61, 1: 61 },//[深潜の麗女]アデーレ
+			5444: { 0: 70 },//[波戯の愛霹]シャイターン
+			5454: { 0: 61, 3: 80 },//[神威明星]ルシファー
+			5459: { 3: 70 },//[省察の先に]茨木童子
+			5471: { 0: 61 },//[正月福娘]フィア
+			5472: { 0: 61 },//[砂漠の湯あみ]ジェフティ
+			5486: { 0: 61 },//[HELIX]テトラ
+			9004: { 2: 70, 3: 71 },//バアル[神想真化]
+			9006: { 0: 61, 3: 80 },//アモン[神想真化]
+			9014: { 0: 61 }//ハデス[神想真化]
 		};
 		const MELODY_BUFF_IDS = { red: 13848, green: 13849, yellow: 13850, blue: 13851 };//旋律狀態ID
 
@@ -7372,10 +7382,10 @@ function onGameApp() {
 		const queuedAbilities = [];//可使用的技能
 		//貝多芬模式的施放邏輯使用
 		const beethovenState = {
-			isActive: false,
-			melodies: { red: 0, green: 0, yellow: 0, blue: 0 },
-			totalMelodies: 0,
-			targetColors: []
+			isActive: false,//啟用貝多芬模式
+			melodies: { red: 0, green: 0, yellow: 0, blue: 0 },//目前旋律
+			totalMelodies: 0,//現在旋律數量
+			targetColors: []//需要的顏色
 		};
 
 		const battleWorld = kh.createInstance("battleWorld");
@@ -7444,22 +7454,33 @@ function onGameApp() {
 						}
 						//貝多芬本身技能不計入旋律計算
 						if (beethovenState.isActive) skillColor="unknown";
-					} else if (beethovenState.isActive) {						
-						const charMappedPriority = CHARACTER_SKILL_PRIORITIES[characterId]?.[skillIdx];
-						if (charMappedPriority === 36 || charMappedPriority === 40) {
-							calculatedPriority = charMappedPriority;//如果是減CT技能,不改變優先級
-						} else if (beethovenState.totalMelodies < 3) {
-							if (beethovenState.targetColors.includes(skillColor)) {
-								calculatedPriority = 15;//是需要的目標顏色
-							} else {
-								calculatedPriority = 45;//會破壞旋律的顏色，延後施放
+					} else {
+						//有特殊優先級的角色先套用
+						const charCustomPriority = CHARACTER_SKILL_PRIORITIES[characterId]?.[skillIdx];
+						if (charCustomPriority !== undefined) calculatedPriority = charCustomPriority;
+						//貝多芬戰術
+						if (beethovenState.isActive && beethovenState.totalMelodies > 0) {
+							//如果是減CT技能,不改變特殊優先級
+							const isExempt = (charCustomPriority > 69);
+							if (!isExempt) {
+								if (beethovenState.targetColors.includes(skillColor)) {
+									//是需要的目標顏色,提升至優先區
+									if (skillColor === "red") {
+										calculatedPriority -= 50;
+									} else if (skillColor === "green") {
+										calculatedPriority -= 20;
+									} else if (skillColor === "yellow") {
+										calculatedPriority -= 30;
+									} else if (skillColor === "blue") {
+										calculatedPriority -= 40;
+									} else {
+										calculatedPriority = 15;
+									}
+								} else {
+									calculatedPriority = 55;//會破壞旋律的顏色，延後施放
+								}
 							}
-						} else {
-							//3個時
-							calculatedPriority = charMappedPriority !== undefined ? charMappedPriority : 55;
 						}
-					} else if (CHARACTER_SKILL_PRIORITIES[characterId]?.[skillIdx]) {
-						calculatedPriority = CHARACTER_SKILL_PRIORITIES[characterId][skillIdx];
 					}
 					if (calculatedPriority === 99) continue;
 					queuedAbilities.push({
@@ -7473,23 +7494,31 @@ function onGameApp() {
 				}
 			}
 			if (characterCount === 0) return;
-			//使用技能
-			const hasUsedAbility = await executePrioritizedAbilities();
-			if (hasUsedAbility) {
-				_playerActionTime = new Date();//更新閒置檢查時間
-				return;
-			}
-			//評估並執行喝水
+			//評估使用道具補血
 			const cureItems = battleWorld?.battleStatus?._cureItems;
 			const hasPotion = (cureItems?.[0]?.count ?? 0) > 0;
 			const hasSuperPotion = (cureItems?.[1]?.count ?? 0) > 0;
 			const potionStatus = evaluatePotionNeeds(characterList);
-
-			if (hasSuperPotion && potionStatus.shouldUse && !hasPotion) {
-				await battleWorld.useItem("cure-medic");
-				return;
-			} else if (potionStatus.needs > 0 && hasPotion) {
-				await battleWorld.useItem("cure-bottle", potionStatus.highestPriorityTargetIndex);
+			//排在綠技最後
+			if (potionStatus.needs > 0 && hasPotion) {
+				queuedAbilities.push({
+					type: "item",
+					itemKey: "cure-bottle",
+					targetIndex: potionStatus.highestPriorityTargetIndex,
+					priority: 38
+				});
+			} else if (hasSuperPotion && potionStatus.shouldUse && !hasPotion) {
+				queuedAbilities.push({
+					type: "item",
+					itemKey: "cure-medic",
+					targetIndex: null,
+					priority: 39
+				});
+			}
+			//使用技能
+			const hasUsedAbility = await executePrioritizedAbilities();
+			if (hasUsedAbility) {
+				_playerActionTime = new Date();//更新閒置檢查時間
 				return;
 			}
 			//點擊攻擊按鍵
@@ -7498,7 +7527,7 @@ function onGameApp() {
 			debugLog("processAutoBattleTurn: " + error);
 		}
 		/**
-		 * @description 依優先級施放技能
+		 * @description 依優先級施放技能或使用道具
 		 * @returns {Promise<boolean>} 是否成功施放了技能
 		 */
 		async function executePrioritizedAbilities() {
@@ -7511,10 +7540,24 @@ function onGameApp() {
 				const attackTargetPos = await battleWorld.getTarget();
 
 				for (const abilityItem of queuedAbilities) {
+					_playerActionTime = Date.now();
+					//道具使用
+					if (abilityItem.type === "item") {
+						try {
+							if (abilityItem.targetIndex !== null && abilityItem.targetIndex !== undefined) {
+								await battleWorld.useItem(abilityItem.itemKey, abilityItem.targetIndex);
+							} else {
+								await battleWorld.useItem(abilityItem.itemKey);
+							}
+							return true;//先不連續執行
+						} catch (itemError) {
+							debugLog(`useItem fail: ${itemError}`);
+							continue;
+						}
+					}
+					//技能施放
 					const character = characterList[abilityItem.characterIndex];
 					const abilityPos = abilityItem.abilityIndex;
-					const originalSkills = battleWorld.characterAbilityList[abilityItem.characterIndex];
-
 					let targetChara = null;
 					if (abilityItem.isSelectable) {
 						//取得技能指定目標
@@ -7522,12 +7565,7 @@ function onGameApp() {
 						if (targetIndex === -1) continue;
 						targetChara = characterList[targetIndex];//取得目標角色
 					}
-					let targetSkill = null;
-					if (Array.isArray(originalSkills)) {
-						targetSkill = originalSkills.find(s => s._index === abilityPos);
-					}
 					try {
-						_playerActionTime = Date.now();
 						const bufferedInput = kh.createInstance("AbilityBufferedInput", [character, abilityPos, attackTargetPos, targetChara]);
 						//排入駐列施放技能
 						await bufferedInput.execute();
@@ -7660,6 +7698,7 @@ function onGameApp() {
 		 */
 		async function determineBeethovenTargetColors(characterList, abilityList) {
 			try {
+				//找出所有
 				const availableColors = { yellow: 0, blue: 0, green: 0, red: 0 };
 				for (let i = 0; i < characterList.length; i++) {
 					if (!characterList[i] || characterList[i].hp === 0 || characterList[i].isJob) continue;
@@ -7676,6 +7715,7 @@ function onGameApp() {
 				}
 				const melodies = beethovenState.melodies;
 				if (beethovenState.totalMelodies === 0) {
+					//不存在旋律時,取有3黃>3藍>3綠>3紅
 					if (availableColors.yellow >= 3) beethovenState.targetColors = ["yellow"];
 					else if (availableColors.blue >= 3) beethovenState.targetColors = ["blue"];
 					else if (availableColors.green >= 3) beethovenState.targetColors = ["green"];
@@ -7683,10 +7723,14 @@ function onGameApp() {
 					else beethovenState.targetColors = ["yellow", "blue", "green"];
 					
 				} else if (beethovenState.totalMelodies === 1) {
-					if (melodies.red === 1) beethovenState.targetColors = ["red"];
-					else beethovenState.targetColors = ["yellow", "blue", "green"];
-					
+					//存在1個旋律時
+					if (melodies.red === 1) {
+						beethovenState.targetColors = ["red"];
+					} else {
+						beethovenState.targetColors = ["yellow", "blue", "green"];
+					}
 				} else if (beethovenState.totalMelodies === 2) {
+					//存在2個旋律時,2旋律同色時,同色旋律優先,2旋律異色時,不同色旋律優先
 					if (melodies.yellow === 2) beethovenState.targetColors = ["yellow"];
 					else if (melodies.blue === 2) beethovenState.targetColors = ["blue"];
 					else if (melodies.green === 2) beethovenState.targetColors = ["green"];
