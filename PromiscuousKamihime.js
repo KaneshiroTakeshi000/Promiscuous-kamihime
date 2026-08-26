@@ -175,28 +175,34 @@ function onPortal() {
 	}
 }
 /**
- * @description 遊戲起始頁，使用 cocos2d 引擎
+ * @description Game top page initialization script using Cocos2d engine.
  */
 function onGameTop() {
 	let _startTime = 0;
+	let _loadStartTime = 0;
 
 	init();
 	/**
-	 * @description 初始化遊戲起始頁
+	 * @description Initializes the game top page and sets the load start time.
 	 */
 	function init() {
+		_loadStartTime = Date.now();
 		setTimeout(onGameTopLoad, 500);
 	}
 	/**
-	 * @description 檢查遊戲起始頁是否載入完成，等待建立完成
+	 * @description Checks if the game top page has loaded. Waits until the scene is running.
+	 * Triggers a timeout error if it takes longer than 60 seconds.
 	 */
 	function onGameTopLoad() {
 		try {
-			if (!cc || !cc.director || !cc.director._runningScene) {
+			if (Date.now() - _loadStartTime > 60000) {
+				debugLog("[Error] onGameTopLoad: Game scene loading timed out after 60 seconds.");
+				return;
+			}
+			if (typeof cc === 'undefined' || !cc.director || !cc.director._runningScene) {
 				setTimeout(onGameTopLoad, 500);
 				return;
 			}
-			debugLog("Game Start page OK");
 			_startTime = Date.now();
 			setTimeout(executeGameStart, 2000);
 		} catch(error) {
@@ -204,7 +210,7 @@ function onGameTop() {
 		}
 	}
 	/**
-	 * @description 自動點擊開始遊戲
+	 * @description Automatically attempts to click the game start button within a 10-second window.
 	 */
 	async function executeGameStart() {
 		try{
@@ -215,26 +221,25 @@ function onGameTop() {
 			if (currentScene) {
 				const btnGameStart = currentScene.seekWidgetByName("top_btn_gamestart_mouse_over");
 				if (btnGameStart) {
+					debugLog("touch the start button");
 					await simulateTouch(btnGameStart);
 				}
-				setTimeout(executeGameStart, 1000);
-			} else {
-				setTimeout(executeGameStart, 1000);
 			}
+			setTimeout(executeGameStart, 1000);
 		} catch(error) {
 			debugLog("executeGameStart: " + error);
 		}
 	}
 	/**
-	 * @description 傳送 LOG 文字至網站頁面顯示
-	 * @param {string} msg - 欲記錄的訊息
+	 * @description Sends log messages to the parent window for display.
+	 * @param {string} msg - The message to be logged.
 	 */
 	function debugLog(msg) {
 		window.parent.postMessage({type:"game_log",message: msg},"*");
 	}
 	/**
-	 * @description 模擬按鈕點擊事件
-	 * @param {Object} button - 要觸發點擊的按鈕元件
+	 * @description Simulates a touch/click event on a given UI button widget.
+	 * @param {Object} button - The target button component to be clicked.
 	 */
 	async function simulateTouch(button) {
 		try {
@@ -1463,7 +1468,7 @@ function onGameFrame() {
 				}
 			`;
 			(document.head || document.documentElement).appendChild(styleNode);
-			appendDebugLog("Load Killer OK");
+			appendDebugLog("load connecting killer OK");
 		} catch (error) {
 			appendDebugLog("hideConnectingScreen:", error);
 		}
@@ -1669,6 +1674,7 @@ function onGameApp() {
 	let _connectingVisible = GM_getValue("hideConnectingScreen", false);//Connecting畫面
 	let _errorPopupVisible = GM_getValue("disableErrorPopups", false);//Error彈窗
 	let _enemyNumEnabled = GM_getValue("showEnemyHpValues", false);//顯示敵方血量數字
+	let _skipScenario = GM_getValue("isSkipScenario", false);//自動略過劇情
 	let _autonomousRobot = GM_getValue("autonomousRobot", "none");//目前使用的輔助機器人名稱
 	let _firebaseDbUrl = GM_getValue("firebaseDbUrl", "");//暫存救援ID的Database網址
 	let _playerId = 0;//玩家ID
@@ -1690,13 +1696,12 @@ function onGameApp() {
 	let _enemyLevel = 0;//進場時關卡Boss等級
 	let _enemyElement = '';//進場時關卡屬性
 	let _enemyCount = 0;//進場時關卡敵人數量
-	let _battlePartyId = 0;//進場時使用隊伍
 	let _playerActionTime = 0;//暫存動作時間,防技能卡住
 	let _rankingTimestamp = 0;//暫存更新名單的時間
 	let _raidPointsDelayOk = false;//是否已關閉功績顯示
 	let _attackButtonHookOk = false;//是否已加入點擊攻擊更新時間戳記
 	let _lastBattleTimestamp = 0;//記錄上次戰鬥時更新的時間戳記
-	let _lastLoggedDamage = "";//記錄上次印出的傷害訊息
+	let _lastLoggedDamage = "";//記錄上次印出的傷害訊息,防重覆訊息
 	let _battlingTimer = null;//用來儲存 setTimeout 的 ID
 	let _isBattlingExecuting = false;//執行鎖，防止非同步重疊
 	let _battlingInstanceCount = 0;//偵測用計數器
@@ -1762,193 +1767,200 @@ function onGameApp() {
 	 * @description 初始化遊戲引擎與攔截邏輯
 	 */
 	async function init() {
-		//程式開始,等待遊戲載入
-		setTimeout(initNetworkHooks, 500);
-		debugLog('initialization Part1 starting...');
-		//不顯示Server錯誤初始化
-		initErrorKillerStyle();
-		toggleErrorKiller(_errorPopupVisible);
-		//開場輔助機先清空
-		if (_autonomousRobot !== "none") sendRobotStrike();
+		try {
+			//程式開始,等待遊戲載入
+			setTimeout(initNetworkHooks, 500);
+			debugLog('initialization part1 starting...');
+			//不顯示Server錯誤初始化
+			initErrorKillerStyle();
+			toggleErrorKiller(_errorPopupVisible);
+			//開場輔助機先清空
+			if (_autonomousRobot !== "none") sendRobotStrike();
 
-		//監聽來自外層訊號
-		GM_addValueChangeListener("disableErrorPopups", function(key, oldValue, newValue, remote) {
-			_errorPopupVisible = newValue;
-			toggleErrorKiller(_errorPopupVisible);//Error彈窗顯示
-		});
-		GM_addValueChangeListener("triggerReload", function() {
-			window.parent.postMessage({ type: "action_lock", lock: false }, "*");//恢復外層UI
-			location.reload();//重新載入遊戲
-		});
-		GM_addValueChangeListener("SellItems", async function() {
-			runTaskSafely(executeItemReclamation);//還原武器幻獸飾品
-		});
-		GM_addValueChangeListener("AutoFreeGacha", async function() {
-			runTaskSafely(executeFreeGacha);//每日十連
-		});
-		GM_addValueChangeListener("AutoRaidGacha", async function() {
-			runTaskSafely(async () => {
-				await executeRaidGacha();//抽當期Raid券
-				await executeExpiringRaidGacha();//抽即期Raid券
+			//監聽來自外層訊號
+			GM_addValueChangeListener("disableErrorPopups", function(key, oldValue, newValue, remote) {
+				_errorPopupVisible = newValue;
+				toggleErrorKiller(_errorPopupVisible);//Error彈窗顯示
 			});
-		});
-		GM_addValueChangeListener("ClearMissions", async function() {
-			runTaskSafely(claimMissionRewards);//清空任務欄
-		});
-		GM_addValueChangeListener("ClearPresents", async function() {
-			runTaskSafely(collectAllPresents);//清空禮物箱
-		});
-		GM_addValueChangeListener("watchEpisodes", function() {
-			runTaskSafely(autoPlayUnreadEpisodes);//清空未觀賞劇情
-		});
-		GM_addValueChangeListener("developerTest2", function() {
-			runTaskSafely(executeDeveloperTests);//測試
-		});
-		GM_addValueChangeListener("getCacheImage", function() {
-			runTaskSafely(downloadInterceptedImages);//下載快取中的圖片
-		});
-		GM_addValueChangeListener("MyInfo", function() {
-			runTaskSafely(downloadMyInformation);//下載我的資訊
-		});
-		GM_addValueChangeListener("getAllData", function() {
-			runTaskSafely(async () => {
-				try {
-					await exportAllHimeData();//取得所有神姬資料
-					await exportAllSummonData();//取得所有幻獸資料
-					await exportAllWeaponData();///取得所有武器資料
-					await exportAllSoulData();//取得所有英靈資料
-				} catch (error) {
-					debugLog("getAllData: " + error);
-				}
+			GM_addValueChangeListener("triggerReload", function() {
+				window.parent.postMessage({ type: "action_lock", lock: false }, "*");//恢復外層UI
+				location.reload();//重新載入遊戲
 			});
-		});
-		GM_addValueChangeListener("getScene", function() {
-			runTaskSafely(async () => {
-				try {
-					if (!cc || !cc.director || !cc.director._runningScene) return;
-					//取得畫面上的按鈕
-					const currentScene = cc.director.getRunningScene() || cc.director._runningScene;
-					await fetchAllNodes(currentScene);
-				} catch (error) {
-					debugLog("getScene: " + error);
-				}
+			GM_addValueChangeListener("SellItems", async function() {
+				runTaskSafely(executeItemReclamation);//還原武器幻獸飾品
 			});
-		});
-		GM_addValueChangeListener("shopping", function() {
-			runTaskSafely(autoPurchaseShopItems);//商店兌換
-		});
-		GM_addValueChangeListener("animationSpeedFactor", function(key, oldValue, newValue, remote) {
-			_animationSpeedFactor = newValue;
-			debugLog('Animation Speed: ' + _animationSpeedFactor);
-			applyAnimationSpeed();//動畫加速
-		});
-		GM_addValueChangeListener("skipAnimationDelay", function(key, oldValue, newValue, remote) {
-			_animationDelay = newValue;
-			setAnimationDelay();//動畫延遲
-		});
-		GM_addValueChangeListener("isAutoAttackEnabled", function(key, oldValue, newValue, remote) {
-			_autoAttackEnabled = newValue;//戰鬥開始自動攻擊
-		});
-		GM_addValueChangeListener("isAutoDeployEnabled", function(key, oldValue, newValue, remote) {
-			_isAutoDeployEnabled = newValue;//自動選擇幻獸與隊伍進場
-		});
-		GM_addValueChangeListener("isAutoRetryEnabled", function(key, oldValue, newValue, remote) {
-			_autoRetryEnabled = newValue;//自動連續挑戰
-		});
-		GM_addValueChangeListener("myRaidHelpTarget", function(key, oldValue, newValue, remote) {
-			_myHelpTarget = newValue;//自開Raid發送救援
-		});
-		GM_addValueChangeListener("othersRaidHelpTarget", function(key, oldValue, newValue, remote) {
-			_othersHelpTarget = newValue;//他開Raid發送救援
-		});
-		GM_addValueChangeListener("raidHelpLevel", function(key, oldValue, newValue, remote) {
-			_raidHelpLevel = newValue;//小於此Raid Level就不求援
-			debugLog(`Level is below ${_raidHelpLevel}, skipping support request.`);
-		});
-		GM_addValueChangeListener("showEnemyHpValues", function(key, oldValue, newValue, remote) {
-			_enemyNumEnabled = newValue;//顯示敵方血量數字
-		});
-		GM_addValueChangeListener("autonomousRobot", function(key, oldValue, newValue, remote) {
-			_autonomousRobot = newValue;//使用的機器人
-			robotRun("submitOrder");
-		});
-		GM_addValueChangeListener("firebaseDbUrl", function(key, oldValue, newValue, remote) {
-			_firebaseDbUrl = newValue;//更新firebase URL
-		});
-		GM_addValueChangeListener("gameTimeScale", function(key, oldValue, newValue, remote) {
-			_cocosTimeScale = newValue;
-			applyGlobalTimeScale();//遊戲引擎速度
-		});
-		GM_addValueChangeListener("targetFps", function(key, oldValue, newValue, remote) {
-			_cocosFps = newValue;
-			applyFPS();//遊戲禎數
-		});
-		GM_addValueChangeListener("httpDelay", function(key, oldValue, newValue, remote) {
-			_httpDelay = newValue;//Http取值回應延遲
-		});
-		GM_addValueChangeListener("isAutoSummonEnabled", function(key, oldValue, newValue, remote) {
-			_autoSummonEnabled = newValue;//戰鬥開始招喚幻獸
-		});
-		GM_addValueChangeListener("isAutoEmoteEnabled", function(key, oldValue, newValue, remote) {
-			_autoStampEnabled = newValue;//戰鬥開始發送表情
-		});
-		GM_addValueChangeListener("isRankingEnabled", function(key, oldValue, newValue, remote) {
-			_isRankingEnabled = newValue;//Raid自動顯示玩家排行
-		});
-		GM_addValueChangeListener("isAutoBattleModeEnabled", function(key, oldValue, newValue, remote) {
-			_autoBattleModeEnabled = newValue;//自訂紅綠自動
-		});
-		GM_addValueChangeListener("isAutoApBpRefillEnabled", function(key, oldValue, newValue, remote) {
-			_autoAPBPEnabled = newValue;//結算自動補給
-		});
-		GM_addValueChangeListener("isAutoReloadEnabled", function(key, oldValue, newValue, remote) {
-			_autoReloadEnabled = newValue;//自動戰鬥時閒置重整(防卡)
-		});
-		GM_addValueChangeListener("isPacketLoggingEnabled", function(key, oldValue, newValue, remote) {
-			_logPacketsEnabled = newValue;//Http傳輸資訊
-		});
-		GM_addValueChangeListener("scenarioStart", function() {
-			onScenario();//進入劇情
-		});
-		GM_addValueChangeListener("scenarioSkip", function() {
-			onScenarioSkip();//劇情點擊Skip
-		});
-		GM_addValueChangeListener("loveSceneStart", function() {
-			onLoveScenes();//進入寢室
-		});
-		GM_addValueChangeListener("LoveScenesSkip", function() {
-			onLoveScenesSkip();//寢室點擊Skip
-		});
-		GM_addValueChangeListener("hideConnectingScreen", function(key, oldValue, newValue, remote) {
-			_connectingVisible = newValue;//隱藏Connecting畫面
-		});
-		GM_addValueChangeListener("janitorMode", function(key, oldValue, newValue, remote) {
-			_janitorMode = newValue;//煉獄收屍者
-		});
-		GM_addValueChangeListener("dailyQuestLevelMax", function(key, oldValue, newValue, remote) {
-			_dailyQuestLevelMax = newValue;//每日Raid關卡等級上限
-		});
-		GM_addValueChangeListener("dailyAccessory", function(key, oldValue, newValue, remote) {
-			_dailyAccessoryQuestId = newValue;//每日飾品任務的執行關卡
-		});
-		GM_addValueChangeListener("rescueInterval", function(key, oldValue, newValue, remote) {
-			_rescueInterval = newValue;//救援碼詢問間隔時間
-		});
-		GM_addValueChangeListener("myRaidQuestLevelMin", function(key, oldValue, newValue, remote) {
-			_myRaidQuestLevelMin = newValue;//關卡等級下限
-		});
-		GM_addValueChangeListener("myRaidQuestLevelMax", function(key, oldValue, newValue, remote) {
-			_myRaidQuestLevelMax = newValue;//關卡等級上限
-		});
-		GM_addValueChangeListener("publicRaidEnemyHp", function(key, oldValue, newValue, remote) {
-			_publicRaidEnemyHp = newValue;//血量閥值
-		});
-		GM_addValueChangeListener("publicRaidParticipants", function(key, oldValue, newValue, remote) {
-			_publicRaidParticipants = newValue;//人數閥值
-		});
-		GM_addValueChangeListener("publicRaidEnemyLevel", function(key, oldValue, newValue, remote) {
-			_publicRaidEnemyLevel = newValue;//等級閥值
-		});
+			GM_addValueChangeListener("AutoFreeGacha", async function() {
+				runTaskSafely(executeFreeGacha);//每日十連
+			});
+			GM_addValueChangeListener("AutoRaidGacha", async function() {
+				runTaskSafely(async () => {
+					await executeRaidGacha();//抽當期Raid券
+					await executeExpiringRaidGacha();//抽即期Raid券
+				});
+			});
+			GM_addValueChangeListener("ClearMissions", async function() {
+				runTaskSafely(claimMissionRewards);//清空任務欄
+			});
+			GM_addValueChangeListener("ClearPresents", async function() {
+				runTaskSafely(collectAllPresents);//清空禮物箱
+			});
+			GM_addValueChangeListener("watchEpisodes", function() {
+				runTaskSafely(autoPlayUnreadEpisodes);//清空未觀賞劇情
+			});
+			GM_addValueChangeListener("developerTest2", function() {
+				runTaskSafely(executeDeveloperTests);//測試
+			});
+			GM_addValueChangeListener("getCacheImage", function() {
+				runTaskSafely(downloadInterceptedImages);//下載快取中的圖片
+			});
+			GM_addValueChangeListener("MyInfo", function() {
+				runTaskSafely(downloadMyInformation);//下載我的資訊
+			});
+			GM_addValueChangeListener("getAllData", function() {
+				runTaskSafely(async () => {
+					try {
+						await exportAllHimeData();//取得所有神姬資料
+						await exportAllSummonData();//取得所有幻獸資料
+						await exportAllWeaponData();///取得所有武器資料
+						await exportAllSoulData();//取得所有英靈資料
+					} catch (error) {
+						debugLog("getAllData: " + error);
+					}
+				});
+			});
+			GM_addValueChangeListener("getScene", function() {
+				runTaskSafely(async () => {
+					try {
+						if (!cc || !cc.director || !cc.director._runningScene) return;
+						//取得畫面上的按鈕
+						const currentScene = cc.director.getRunningScene() || cc.director._runningScene;
+						await fetchAllNodes(currentScene);
+					} catch (error) {
+						debugLog("getScene: " + error);
+					}
+				});
+			});
+			GM_addValueChangeListener("shopping", function() {
+				runTaskSafely(autoPurchaseShopItems);//商店兌換
+			});
+			GM_addValueChangeListener("animationSpeedFactor", function(key, oldValue, newValue, remote) {
+				_animationSpeedFactor = newValue;
+				debugLog('Animation Speed: ' + _animationSpeedFactor);
+				applyAnimationSpeed();//動畫加速
+			});
+			GM_addValueChangeListener("skipAnimationDelay", function(key, oldValue, newValue, remote) {
+				_animationDelay = newValue;
+				setAnimationDelay();//動畫延遲
+			});
+			GM_addValueChangeListener("isAutoAttackEnabled", function(key, oldValue, newValue, remote) {
+				_autoAttackEnabled = newValue;//戰鬥開始自動攻擊
+			});
+			GM_addValueChangeListener("isAutoDeployEnabled", function(key, oldValue, newValue, remote) {
+				_isAutoDeployEnabled = newValue;//自動選擇幻獸與隊伍進場
+			});
+			GM_addValueChangeListener("isAutoRetryEnabled", function(key, oldValue, newValue, remote) {
+				_autoRetryEnabled = newValue;//自動連續挑戰
+			});
+			GM_addValueChangeListener("myRaidHelpTarget", function(key, oldValue, newValue, remote) {
+				_myHelpTarget = newValue;//自開Raid發送救援
+			});
+			GM_addValueChangeListener("othersRaidHelpTarget", function(key, oldValue, newValue, remote) {
+				_othersHelpTarget = newValue;//他開Raid發送救援
+			});
+			GM_addValueChangeListener("raidHelpLevel", function(key, oldValue, newValue, remote) {
+				_raidHelpLevel = newValue;//小於此Raid Level就不求援
+				debugLog(`Level is below ${_raidHelpLevel}, skipping support request.`);
+			});
+			GM_addValueChangeListener("showEnemyHpValues", function(key, oldValue, newValue, remote) {
+				_enemyNumEnabled = newValue;//顯示敵方血量數字
+			});
+			GM_addValueChangeListener("isSkipScenario", function(key, oldValue, newValue, remote) {
+				_skipScenario = newValue;//自動略過劇情
+			});
+			GM_addValueChangeListener("autonomousRobot", function(key, oldValue, newValue, remote) {
+				_autonomousRobot = newValue;//使用的機器人
+				robotRun("submitOrder");
+			});
+			GM_addValueChangeListener("firebaseDbUrl", function(key, oldValue, newValue, remote) {
+				_firebaseDbUrl = newValue;//更新firebase URL
+			});
+			GM_addValueChangeListener("gameTimeScale", function(key, oldValue, newValue, remote) {
+				_cocosTimeScale = newValue;
+				applyGlobalTimeScale();//遊戲引擎速度
+			});
+			GM_addValueChangeListener("targetFps", function(key, oldValue, newValue, remote) {
+				_cocosFps = newValue;
+				applyFPS();//遊戲禎數
+			});
+			GM_addValueChangeListener("httpDelay", function(key, oldValue, newValue, remote) {
+				_httpDelay = newValue;//Http取值回應延遲
+			});
+			GM_addValueChangeListener("isAutoSummonEnabled", function(key, oldValue, newValue, remote) {
+				_autoSummonEnabled = newValue;//戰鬥開始招喚幻獸
+			});
+			GM_addValueChangeListener("isAutoEmoteEnabled", function(key, oldValue, newValue, remote) {
+				_autoStampEnabled = newValue;//戰鬥開始發送表情
+			});
+			GM_addValueChangeListener("isRankingEnabled", function(key, oldValue, newValue, remote) {
+				_isRankingEnabled = newValue;//Raid自動顯示玩家排行
+			});
+			GM_addValueChangeListener("isAutoBattleModeEnabled", function(key, oldValue, newValue, remote) {
+				_autoBattleModeEnabled = newValue;//自訂紅綠自動
+			});
+			GM_addValueChangeListener("isAutoApBpRefillEnabled", function(key, oldValue, newValue, remote) {
+				_autoAPBPEnabled = newValue;//結算自動補給
+			});
+			GM_addValueChangeListener("isAutoReloadEnabled", function(key, oldValue, newValue, remote) {
+				_autoReloadEnabled = newValue;//自動戰鬥時閒置重整(防卡)
+			});
+			GM_addValueChangeListener("isPacketLoggingEnabled", function(key, oldValue, newValue, remote) {
+				_logPacketsEnabled = newValue;//Http傳輸資訊
+			});
+			GM_addValueChangeListener("scenarioStart", function() {
+				onScenario();//進入劇情
+			});
+			GM_addValueChangeListener("scenarioSkip", function() {
+				onScenarioSkip();//劇情點擊Skip
+			});
+			GM_addValueChangeListener("loveSceneStart", function() {
+				onLoveScenes();//進入寢室
+			});
+			GM_addValueChangeListener("LoveScenesSkip", function() {
+				onLoveScenesSkip();//寢室點擊Skip
+			});
+			GM_addValueChangeListener("hideConnectingScreen", function(key, oldValue, newValue, remote) {
+				_connectingVisible = newValue;//隱藏Connecting畫面
+			});
+			GM_addValueChangeListener("janitorMode", function(key, oldValue, newValue, remote) {
+				_janitorMode = newValue;//煉獄收屍者
+			});
+			GM_addValueChangeListener("dailyQuestLevelMax", function(key, oldValue, newValue, remote) {
+				_dailyQuestLevelMax = newValue;//每日Raid關卡等級上限
+			});
+			GM_addValueChangeListener("dailyAccessory", function(key, oldValue, newValue, remote) {
+				_dailyAccessoryQuestId = newValue;//每日飾品任務的執行關卡
+			});
+			GM_addValueChangeListener("rescueInterval", function(key, oldValue, newValue, remote) {
+				_rescueInterval = newValue;//救援碼詢問間隔時間
+			});
+			GM_addValueChangeListener("myRaidQuestLevelMin", function(key, oldValue, newValue, remote) {
+				_myRaidQuestLevelMin = newValue;//關卡等級下限
+			});
+			GM_addValueChangeListener("myRaidQuestLevelMax", function(key, oldValue, newValue, remote) {
+				_myRaidQuestLevelMax = newValue;//關卡等級上限
+			});
+			GM_addValueChangeListener("publicRaidEnemyHp", function(key, oldValue, newValue, remote) {
+				_publicRaidEnemyHp = newValue;//血量閥值
+			});
+			GM_addValueChangeListener("publicRaidParticipants", function(key, oldValue, newValue, remote) {
+				_publicRaidParticipants = newValue;//人數閥值
+			});
+			GM_addValueChangeListener("publicRaidEnemyLevel", function(key, oldValue, newValue, remote) {
+				_publicRaidEnemyLevel = newValue;//等級閥值
+			});
+		} catch (error) {
+			debugLog("init:", error);
+		}
 	}
 	/**
 	 * @description 伺服器錯誤遮擋的樣式開關初始化
@@ -1968,7 +1980,7 @@ function onGameApp() {
 					z-index: -1 !important;
 				}`;
 			(document.head || document.documentElement).appendChild(styleNode);
-			debugLog("Load Error Killer OK");
+			debugLog("load error killer OK");
 		} catch (error) {
 			debugLog("initErrorKillerStyle:", error);
 		}
@@ -2008,19 +2020,11 @@ function onGameApp() {
 			kh.postMessage = function(e, r, s) {
 				//if (e !== "setSession") debugLog("postMessage: " + e);
 				if (e === "deployTouchShield") return;//不給遮
+				if (e === "deployLoading") return;
 				return originalPostMessage.apply(this, arguments);
 			}
 			//攔截所有發往遊戲伺服器的 GET 請求
 			kh.HttpConnection.prototype.getRaw = kh.HttpConnection.prototype.get;
-			// kh.HttpConnection.prototype.get = function (requestData, reqType = "normal") {
-			// 	_postQueue.push(JSON.stringify( {...requestData, method: 'get'}));flushRequestQueue();
-			// 	this.errorIfNotSetSessionId();
-			// 	return this._wrapFireEvent(function (req) {
-			// 	 	req = this._normalizeId(req);
-			// 	 	const actualUrl = this._URLDelegate.process(req);
-			// 	 	return this._connect.get(actualUrl).fail(this.checkFailedReason.bind(this));
-			// 	}.bind(this), requestData, reqType);
-			// };
 			kh.HttpConnection.prototype.get = function (requestData, reqType = "normal") {
 				_postQueue.push(JSON.stringify( {...requestData, method: 'get'}));flushRequestQueue();
 				this.errorIfNotSetSessionId();
@@ -2034,27 +2038,8 @@ function onGameApp() {
 					}
 				}, requestData, reqType);
 			};
-			//網路傳輸攔截
 			//攔截所有發往遊戲伺服器的 POST 請求
 			kh.HttpConnection.prototype.postRaw = kh.HttpConnection.prototype.post;
-			// kh.HttpConnection.prototype.post = function (requestData, reqType = "normal") {
-			// 	_postQueue.push(JSON.stringify({...requestData, method: 'post'}));flushRequestQueue();
-			// 	this.errorIfNotSetSessionId();
-			// 	return this._wrapFireEvent(function (req) {
-			// 		req = this._normalizeId(req);
-			// 		const actualUrl = this._URLDelegate.process(req);
-			// 		return this._connect.post(actualUrl)
-			// 		.then(function (response) {
-			// 			PurgeRule.setChangeConnectionFlag();
-			// 			if (_httpDelay > 0) {
-			// 				return Q.delay(_httpDelay).thenResolve(response);
-			// 			} else {
-			// 				return response;
-			// 			}
-			// 		})
-			// 		.fail(this.checkFailedReason.bind(this));
-			// 	}.bind(this), requestData, reqType);
-			// };
 			kh.HttpConnection.prototype.post = function (requestData, reqType = "normal") {
 				_postQueue.push(JSON.stringify({ ...requestData, method: 'post' }));flushRequestQueue();
 				this.errorIfNotSetSessionId();
@@ -2073,24 +2058,6 @@ function onGameApp() {
 			};
 			//攔截所有發往遊戲伺服器的 PUT 請求
 			kh.HttpConnection.prototype.putRaw = kh.HttpConnection.prototype.put;
-			// kh.HttpConnection.prototype.put = function (requestData, reqType = "normal") {
-			// 	_postQueue.push(JSON.stringify({...requestData, method: 'put'}));flushRequestQueue();
-			// 	this.errorIfNotSetSessionId();
-			// 	return this._wrapFireEvent(function (req) {
-			// 		req = this._normalizeId(req);
-			// 		const actualUrl = this._URLDelegate.process(req);
-			// 		return this._connect.put(actualUrl)
-			// 			.then(function (response) {
-			// 				PurgeRule.setChangeConnectionFlag();
-			// 				if (_httpDelay > 0) {
-			// 					return Q.delay(_httpDelay).thenResolve(response);
-			// 				} else {
-			// 					return response;
-			// 				}
-			// 			})
-			// 			.fail(this.checkFailedReason.bind(this));
-			// 	}.bind(this), requestData, reqType);
-			// }
 			kh.HttpConnection.prototype.put = function (requestData, reqType = "normal") {
 				_postQueue.push(JSON.stringify({ ...requestData, method: 'put' }));flushRequestQueue();
 				this.errorIfNotSetSessionId();
@@ -2132,8 +2099,11 @@ function onGameApp() {
 			}
 			//初始化 HTTP 連接
 			if (!_httpClient) {_httpClient = kh.createInstance("HttpConnection");}
-			//幻獸動畫
-			kh.Summon.prototype.FADE_SPEED = 0.1;//default 0.3
+			//動畫
+			kh.Summon.prototype.FADE_SPEED = 0.05;//default 0.3
+			kh.CHARACTER_PANEL_BAR_ANIMATION_DURATION = 0.05;//default 0.1
+			kh.ENEMY_STATUS_BAR_ANIMATION_DURATION = 0.01;//default 0.08
+			kh.AVATAR_DIE_FADEOUT_DELAY_TIME = 0.05;//default 0.5
 			//動畫加速
 			kh.PlayerGameConfig.prototype.BATTLE_SPEED_SETTINGS.quick = _animationSpeedFactor;
 			debugLog('Animation Speed: ' + _animationSpeedFactor);
@@ -2157,7 +2127,7 @@ function onGameApp() {
 			await hookAllPopups();
 			//繼續設定
 			setTimeout(initGameEngine, 0);
-			debugLog('initialization Part2 starting...');
+			debugLog('initialization part2 starting...');
 		} catch(error) {
 			debugLog("initNetworkHooks: " + error);
 		}
@@ -2210,7 +2180,7 @@ function onGameApp() {
 			if (kh.PopupFactoryComUseResult) {
 				kh.PopupFactoryComUseResult.prototype.onPopupOpenedRaw = kh.PopupFactoryComUseResult.prototype.onPopupOpened;
 				const comUseResultPopupOpened = kh.PopupFactoryComUseResult.prototype.onPopupOpened;
-				kh.PopupFactoryComUseResult.prototype.onPopupOpened= function (popup, ...args) {
+				kh.PopupFactoryComUseResult.prototype.onPopupOpened = function (popup, ...args) {
 					const result = comUseResultPopupOpened.call(this, popup, ...args);
 					if (_autoAPBPEnabled) {
 						setTimeout(() => {simulateTouch(popup.seekWidgetByName('blue_btn'));}, 0);
@@ -2219,6 +2189,20 @@ function onGameApp() {
 				};
 			} else {
 				debugLog(`no kh.PopupFactoryComUseResult`);
+			}
+			//任務/活動簡介
+			if (kh.PopupFactoryAQ002Brief) {
+				kh.PopupFactoryAQ002Brief.prototype.onPopupOpenedRaw = kh.PopupFactoryAQ002Brief.prototype.onPopupOpened;
+				const aQ002BriefPopupOpened = kh.PopupFactoryAQ002Brief.prototype.onPopupOpened;
+				kh.PopupFactoryAQ002Brief.prototype.onPopupOpened = function (popup, ...args) {
+					const result = aQ002BriefPopupOpened.call(this, popup, ...args);
+					if (_skipScenario) {
+						setTimeout(() => {simulateTouch(popup.seekWidgetByName('yellow_btn'));}, 0);
+					}
+					return result;
+				};
+			} else {
+				debugLog(`no kh.PopupFactoryAQ002Brief`);
 			}
 			//只監聽,尚未使用的部分
 			const popupConfig = [
@@ -2336,7 +2320,7 @@ function onGameApp() {
 	async function initGameEngine() {
 		try {
 			//等待遊戲主頁建立完成
-			if (!cc || !cc.director || !cc.director._runningScene) {
+			if (!cc || !cc.game || !cc.director || !cc.director._runningScene) {
 				setTimeout(initGameEngine, 500);
 				return;
 			}
@@ -2375,11 +2359,21 @@ function onGameApp() {
 					};
 				}
 			}
-			applyFPS();//調整遊戲FPS
-			applyGlobalTimeScale();//調整遊戲時間尺度
-			syncAnimationSpeed();//調整戰鬥動畫速度
+			//調整遊戲FPS
+			cc.game.setFrameRate(_cocosFps);
+			debugLog("fps: " + _cocosFps);
+			if (cc.macro) {
+				cc.macro.FPS = _cocosFps;
+			} else {
+				debugLog("no cc.macro");
+			}
+			//調整遊戲時間尺度
+			cc.director.getScheduler().setTimeScale(_cocosTimeScale);
+			debugLog("TimeScale: " + _cocosTimeScale);
+			//調整戰鬥動畫速度
+			syncAnimationSpeed();
 			setTimeout(initBattleObservers, 0);//初始化戰鬥資訊
-			debugLog('initialization Part3 starting...');
+			debugLog('initialization part3 starting...');
 		} catch(error) {
 			debugLog("initGameEngine: " + error);
 		}
@@ -2396,16 +2390,16 @@ function onGameApp() {
 			//關閉傳送錯誤日誌
 			kh.env.sendErrorLog = false;
 			//攔截開始戰鬥
-			const originalMethodStart = kh.BattleWorld.prototype._start;
 			kh.BattleWorld.prototype._startRaw = kh.BattleWorld.prototype._start;
+			const originalMethodStart = kh.BattleWorld.prototype._start;
 			kh.BattleWorld.prototype._start = async function(sceneInstanceId) {const result = await originalMethodStart.apply(this, [sceneInstanceId]);setTimeout(onBattleStart, 0);return result;}			
 			//攔截戰鬥結束
-			const originalMethodEndBattle = kh.BattleWorld.prototype.endBattle;
 			kh.BattleWorld.prototype.endBattleRaw = kh.BattleWorld.prototype.endBattle;
+			const originalMethodEndBattle = kh.BattleWorld.prototype.endBattle;
 			kh.BattleWorld.prototype.endBattle = async function(isForcedRelease) {setTimeout(onBattleEnd, 0);return originalMethodEndBattle.call(this, isForcedRelease);}
 			//攔截戰鬥回合數
-			const originalMethodSetTurnNumber = kh.Turn.prototype.setTurnNumber;
 			kh.Turn.prototype.setTurnNumberRaw = kh.Turn.prototype.setTurnNumber;
+			const originalMethodSetTurnNumber = kh.Turn.prototype.setTurnNumber;
 			kh.Turn.prototype.setTurnNumber = function (t) {
 				const result = originalMethodSetTurnNumber.call(this, t);
 				sendTurnText(`(${_currentStage}/${_maxStage}),${t+1}`);
@@ -2575,7 +2569,7 @@ function onGameApp() {
 				loggerPrototype.reportWidgetUserOperation = function(actionType, widgetNode) {};
 			}
 			setTimeout(initCache, 1200);
-			debugLog('initialization Part4 starting...');
+			debugLog('initialization part4 starting...');
 		} catch(error) {
 			debugLog("initBattleObservers: " + error);
 		}
@@ -2605,6 +2599,11 @@ function onGameApp() {
 			const currentSceneName = cc.director._runningScene.sceneName;
 			sendSceneText(currentSceneName ?? "*");
 			debugLog('initialization ok');
+			//日文版的聲音選單
+			if (_language === 0) {
+				await sleep(500);
+				await simulateTouch(cc.director._runningScene.seekWidgetByName("btn_ok"));
+			}
 		} catch(error) {
 			debugLog("initCache: " + error);
 		}
@@ -2923,9 +2922,9 @@ function onGameApp() {
 		debugLog(logMsg);
 	}
 	/**
-	 * @description 查詢物件的所有方法與變數，還原為 Class 程式碼並自動下載為 .txt
-	 * @param {Object} obj - 要查詢的目標物件
-	 * @param {string} [objName="UnknownObject"] - 自訂顯示的物件名稱
+	 * @description Inspects the target object, extracts its properties and methods, and reconstructs it into a Class code structure to download as a .txt file.
+	 * @param {Object} obj - The target object to be inspected.
+	 * @param {string} [objName="UnknownObject"] - The custom name to display for the object.
 	 */
 	async function inspectObjectAndDownload(obj, objName = "UnknownObject") {
 		try {
@@ -2934,75 +2933,53 @@ function onGameApp() {
 				return;
 			}
 			// Determine the class/file name
-			const targetName = obj.className || objName;
-			const allKeys = new Set();
+			const targetName = obj.className || obj.constructor?.name || objName;
+			const propertyMap = new Map();//const allKeys = new Set();
 			let currentObj = obj;
 			// Traverse the prototype chain
 			while (currentObj && currentObj !== Object.prototype) {
 				const keys = Reflect.ownKeys(currentObj);
-				keys.forEach(key => {
-					if (key === 'constructor') return;
-					allKeys.add(key);
-				});
+				for (const key of keys) {
+					if (key === 'constructor') continue; // Use 'continue' instead of 'return' in a loop
+					if (!propertyMap.has(key)) {
+						propertyMap.set(key, Object.getOwnPropertyDescriptor(currentObj, key));
+					}
+				}
 				currentObj = Object.getPrototypeOf(currentObj);
 			}
 			const methods = [];
 			const variables = [];
 			// Categorize and parse types
-			allKeys.forEach(key => {
-				const keyStr = key.toString();
+			propertyMap.forEach((descriptor, key) => {
+				const isSymbol = typeof key === 'symbol';
+				const keyStr = isSymbol ? `[${key.toString()}]` : key.toString();
 				try {
-					const value = obj[key];
-					if (typeof value === 'function') {
-						let funcCode;
-						try {
-							funcCode = Function.prototype.toString.call(value);
-						} catch (error) {
-							funcCode = "[Cannot get source]";
+					// 處理 Getter
+					if (descriptor.get) {
+						let funcCode = parseFunctionCode(descriptor.get, keyStr, 'get');
+						methods.push({ name: `get ${keyStr}`, code: funcCode });
+					}
+					// 處理 Setter
+					if (descriptor.set) {
+						let funcCode = parseFunctionCode(descriptor.set, keyStr, 'set');
+						methods.push({ name: `set ${keyStr}`, code: funcCode });
+					}
+					// 處理一般 Value
+					if ('value' in descriptor) {
+						const value = descriptor.value;
+						if (typeof value === 'function') {
+							let funcCode = parseFunctionCode(value, keyStr);
+							methods.push({ name: keyStr, code: funcCode });
+						} else {//處理變數
+							let valSuffix = parseVariableValue(value);
+							variables.push(`this.${keyStr}${valSuffix}`);
 						}
-						// Format as ES6 Class Method with Tab (\t) indentation for native code
-						if (funcCode.includes("[native code]")) {
-							funcCode = `${keyStr}() { \n\t\t// [Native Function Code]\n\t}`;
-						} else {
-							// Remove 'function' keyword for class syntax
-							funcCode = funcCode.replace(/^async\s+function\s*[a-zA-Z0-9_$]*\s*\(/, `async ${keyStr}(`);
-							funcCode = funcCode.replace(/^function\s*[a-zA-Z0-9_$]*\s*\(/, `${keyStr}(`);
-							// Fallback for arrow functions or already formatted methods
-							if (!funcCode.startsWith(keyStr) && !funcCode.startsWith('async')) {
-								funcCode = `${keyStr} = ${funcCode}`; 
-							}
-							funcCode = beautifyMinifiedJS(funcCode);
-						}
-						methods.push({ name: keyStr, code: funcCode });
-					} else {
-						// Format variables
-						let valSuffix = "";
-						if (typeof value === 'string') {
-							valSuffix = ` = "${value.replace(/"/g, '\\"')}";`;
-						} else if (typeof value === 'number' || typeof value === 'boolean') {
-							valSuffix = ` = ${value};`;
-						} else if (Array.isArray(value)) {
-							valSuffix = ` = []; // Array(Size: ${value.length})`;
-						} else if (typeof value === 'object') {
-							if (value === null) {
-								valSuffix = ` = null;`;
-							} else if (value.className) {
-								valSuffix = ` = new ${value.className}();`;
-							} else if (value.constructor && value.constructor.name) {
-								valSuffix = ` = {}; // Object: ${value.constructor.name}`;
-							} else {
-								valSuffix = ` = {}; // Object`;
-							}
-						} else {
-							valSuffix = ` = null; // Type: ${typeof value}`;
-						}
-						variables.push(`this.${keyStr}${valSuffix}`);
 					}
 				} catch (error) {
 					variables.push(`// this.${keyStr} // Read error`);
 				}
 			});
-			// Sorting
+			//Sorting
 			variables.sort();
 			methods.sort((a, b) => {
 				if (a.name === 'ctor' || a.name === 'constructor') return -1;
@@ -3011,33 +2988,64 @@ function onGameApp() {
 				if (b.name === 'init') return 1;
 				return a.name.localeCompare(b.name);
 			});
-			// Beautify and build the final class string using Tabs
+			//Beautify and build the final class string using Tabs
 			let classStr = `class ${targetName} {\n`;
-			// Add Constructor with 1 Tab
-			classStr += `\tconstructor() {\n`;
-			if (variables.length > 0) {
-				variables.forEach(v => {
-					// Add variables with 2 Tabs
-					classStr += `\t\t${v}\n`;
-				});
+			classStr += `\tconstructor() {\n`;//Add Constructor with 1 Tab
+			for (const v of variables) {
+				classStr += `\t\t${v}\n`;
 			}
 			classStr += `\t}\n`;
 			// Add Methods
-			if (methods.length > 0) {
-				methods.forEach(m => {
-					// Indent EVERY line of the method body with 1 Tab (\t)
-					const indentedCode = m.code.split('\n').map(line => {
-						return `\t${line}`;
-					}).join('\n');
-					classStr += `${indentedCode}\n`;
-				});
-			}
+			methods.forEach(m => {
+				const indentedCode = m.code.split('\n').map(line => `\t${line}`).join('\n');
+				classStr += `\n${indentedCode}\n`;
+			});
 			classStr += `}\n`;
 			// Log success in pure English and trigger download
 			debugLog(`[Inspect Success] Class ${targetName} reconstructed successfully. Check downloads.`);
 			exportToTxtFile(classStr, targetName);
 		} catch (error) {
 			debugLog("inspectObjectAndDownload: " + error);
+		}
+		/**
+		 * 輔助函式：解析並美化函式代碼
+		 */
+		function parseFunctionCode(funcObj, keyStr, accessorType = '') {
+			let funcCode;
+			try {
+				funcCode = Function.prototype.toString.call(funcObj);
+			} catch (error) {
+				return `${accessorType ? accessorType + ' ' : ''}${keyStr}() { \n\t\t// [Cannot get source]\n\t}`;
+			}
+			if (funcCode.includes("[native code]")) {
+				return `${accessorType ? accessorType + ' ' : ''}${keyStr}() { \n\t\t// [Native Function Code]\n\t}`;
+			}
+			// 清理 function 關鍵字以符合 Class 語法
+			funcCode = funcCode.replace(/^async\s+function\s*[a-zA-Z0-9_$]*\s*\(/, `async ${keyStr}(`);
+			funcCode = funcCode.replace(/^function\s*[a-zA-Z0-9_$]*\s*\(/, `${keyStr}(`);
+			// 針對 Getter/Setter 補上關鍵字
+			if (accessorType && !funcCode.startsWith(accessorType)) {
+				funcCode = `${accessorType} ${funcCode}`;
+			} else if (!accessorType && !funcCode.startsWith(keyStr) && !funcCode.startsWith('async')) {
+				funcCode = `${keyStr} = ${funcCode}`; 
+			}
+			return beautifyMinifiedJS(funcCode);
+		}
+		/**
+		 * 輔助函式：解析變數值型態註解
+		 */
+		function parseVariableValue(value) {
+			if (typeof value === 'string') return ` = "${value.replace(/"/g, '\\"')}";`;
+			if (typeof value === 'number' || typeof value === 'boolean') return ` = ${value};`;
+			if (Array.isArray(value)) return ` = []; // Array(Size: ${value.length})`;
+			
+			if (typeof value === 'object') {
+				if (value === null) return ` = null;`;
+				if (value.className) return ` = new ${value.className}();`;
+				if (value.constructor && value.constructor.name) return ` = {}; // Object: ${value.constructor.name}`;
+				return ` = {}; // Object`;
+			}
+			return ` = null; // Type: ${typeof value}`;
 		}
 		/**
 		 * A lightweight code beautifier: automatically adds line breaks and indentation.
@@ -3186,7 +3194,11 @@ function onGameApp() {
 		let logMsg = `\n`;
 		if (foundNodes.length > 0) {
 			foundNodes.forEach(btn => {
-				logMsg += `class:${btn.className}, name:${btn.name} , text:${btn.text}, enabled:${btn.isEnabled}, visible:${btn.isVisible}, path:${btn.path}\n`;
+				if (btn.gameClass) {
+					logMsg += `class:${btn.className}, name:${btn.name} , text:${btn.text}, enabled:${btn.isEnabled}, visible:${btn.isVisible}, gClass:${btn.gameClass}, path:${btn.path}\n`;
+				} else {
+					logMsg += `class:${btn.className}, name:${btn.name} , text:${btn.text}, enabled:${btn.isEnabled}, visible:${btn.isVisible}, path:${btn.path}\n`;
+				}
 			});
 		} else {
 			debugLog("no button in scene.");
@@ -3199,6 +3211,7 @@ function onGameApp() {
 			//取得該元件的名稱與型態
 			const nodeName = typeof node.getName === 'function' ? node.getName() : "";
 			const nodeClassName = node._className || "unknown";
+			const gameClassName = node.className || "";
 			const nodeNameFixed = (nodeName || (nodeClassName + "(C)"));	
 			let isNodeClickable = typeof node.isTouchEnabled === 'function' ? node.isTouchEnabled() : true;
 			let isNodeEnabled = typeof node.isEnabled === 'function' ? node.isEnabled() : true;
@@ -3216,6 +3229,7 @@ function onGameApp() {
 						node: node,
 						name: nodeNameFixed,
 						className: nodeClassName,
+						gameClass: gameClassName,
 						text: nodeText,
 						path: parent,
 						isVisible: isNodeVisible,
@@ -3425,14 +3439,10 @@ function onGameApp() {
 						//自開關卡
 						_battleStartTime = Date.now();
 						_battleStartInfo = requestObj;
-						//取得隊伍ID
-						_battlePartyId = requestObj.json.a_party_id;
 					} else if (urlPatternJoin.test(requestObj.url)) {
 						//別人的關卡
 						_battleStartTime = Date.now();
 						_battleStartInfo = null;//先不紀錄
-						//取得隊伍ID
-						_battlePartyId = requestObj.json.a_party_id;
 					}
 				}				
 			} catch (error) {
@@ -6427,7 +6437,7 @@ function onGameApp() {
 				if (cc.macro) {
 					cc.macro.FPS = _cocosFps;
 				}
-				debugLog("FPS: " + _cocosFps);
+				debugLog("fps: " + _cocosFps);
 			}
 		} catch (error) {
 			debugLog("applyFPS: " + error);
@@ -7234,7 +7244,7 @@ function onGameApp() {
 			_battleWorld = kh.createInstance("battleWorld");
 			const battleUI = _battleWorld?.battleUI;
 			if (battleUI) {
-				//戰鬥中邏輯另外執行, 並限制執行時間
+				//戰鬥邏輯另外執行, 並限制執行時間
 				const loopResult = await withTimeout(processCoreBattleLogic(), _autoReloadWaiting);
 				if (loopResult === "STOP_LOOP") return;
 			}
@@ -7288,11 +7298,9 @@ function onGameApp() {
 				}
 			}
 		} else if (await isNextButtonReady()) {
-			//有Next就點
-			battleUI.NextButton.emulateNextButtonPress();
+			battleUI.NextButton.emulateNextButtonPress();//有Next就點
 		}
-		//更新時間戳記,確認執行狀況
-		const currentTime = Date.now();
+		const currentTime = Date.now();//更新時間戳記,確認執行狀況
 		if (currentTime - _lastBattleTimestamp > 1000) {
 			_lastBattleTimestamp = currentTime;
 			//更新顯示時間
@@ -7331,7 +7339,7 @@ function onGameApp() {
 	}
 	/**
 	 * @description 自訂技能施放的戰鬥邏輯
-	 * 預設優先級: 幻獸->綠->吃藥->黃->藍->優先紅->紅->減CT技->攻擊
+	 * 預設優先級: 幻獸->綠->HP藥->黃->藍->紅->減CT技->攻擊
 	 */
 	async function processAutoBattleTurn() {
 		//優先級:英靈區1~29, 綠30~39, 黃40~49, 藍50~59, 紅60~69, 減CT技(個人)70, 減CT技(全部)80, 不使用99
@@ -7383,9 +7391,9 @@ function onGameApp() {
 		//貝多芬模式的施放邏輯使用
 		const beethovenState = {
 			isActive: false,//啟用貝多芬模式
-			melodies: { red: 0, green: 0, yellow: 0, blue: 0 },//目前旋律
+			melodies: {red: 0, green: 0, yellow: 0, blue: 0},//目前旋律
 			totalMelodies: 0,//現在旋律數量
-			targetColors: []//需要的顏色
+			targetColors: ""//優先顏色
 		};
 
 		const battleWorld = kh.createInstance("battleWorld");
@@ -7394,7 +7402,7 @@ function onGameApp() {
 			//有正在排序的技能先不作用
 			if (battleWorld.bufferedInputController.getLength() > 0) return;
 			//沒敵人不作用
-			const enemyList = _battleWorld.enemyList || [];
+			const enemyList = battleWorld.enemyList || [];
 			if (enemyList.length === 0) return;
 			//尋找英靈並確認是否為貝多芬
 			const characterList = battleWorld.characterList || [];
@@ -7425,7 +7433,7 @@ function onGameApp() {
 			//貝多芬模式
 			if (beethovenState.isActive) {
 				updateBeethovenMelodyState();//取得貝多芬旋律數量
-				determineBeethovenTargetColors(characterList, battleWorld.characterAbilityList);//取得貝多芬戰術需要技能顏色
+				determineBeethovenTargetColors();//取得貝多芬戰術需要技能顏色
 			}
 			//技能優先級分配
 			const abilityList = battleWorld.characterAbilityList;
@@ -7453,37 +7461,28 @@ function onGameApp() {
 							calculatedPriority = SOUL_SKILL_PRIORITIES[characterId][skillIdx];
 						}
 						//貝多芬本身技能不計入旋律計算
-						if (beethovenState.isActive) skillColor="unknown";
+						if (beethovenState.isActive) skillColor = "unknown";
 					} else {
 						//有特殊優先級的角色先套用
 						const charCustomPriority = CHARACTER_SKILL_PRIORITIES[characterId]?.[skillIdx];
 						if (charCustomPriority !== undefined) calculatedPriority = charCustomPriority;
 						//貝多芬戰術
-						if (beethovenState.isActive && beethovenState.totalMelodies > 0) {
+						if (beethovenState.isActive) {
 							//如果是減CT技能,不改變特殊優先級
-							const isExempt = (charCustomPriority > 69);
-							if (!isExempt) {
-								if (beethovenState.targetColors.includes(skillColor)) {
-									//是需要的目標顏色,提升至優先區
-									if (skillColor === "red") {
-										calculatedPriority -= 50;
-									} else if (skillColor === "green") {
-										calculatedPriority -= 20;
-									} else if (skillColor === "yellow") {
-										calculatedPriority -= 30;
-									} else if (skillColor === "blue") {
-										calculatedPriority -= 40;
-									} else {
-										calculatedPriority = 15;
-									}
-								} else {
-									calculatedPriority = 55;//會破壞旋律的顏色，延後施放
+							if (charCustomPriority < 70) {
+								if (beethovenState.targetColors === skillColor) {
+									//是需要的目標顏色,提升至優先區(10~19)
+									const priorityAdjustments = {red: -50, green: -20, yellow: -30, blue: -40};
+									calculatedPriority = priorityAdjustments[skillColor] 
+										? calculatedPriority + priorityAdjustments[skillColor] 
+										: 15;
 								}
 							}
 						}
 					}
 					if (calculatedPriority === 99) continue;
 					queuedAbilities.push({
+						type: "skill",
 						characterIndex: i,
 						abilityIndex: skillIdx,
 						color: skillColor,
@@ -7515,11 +7514,15 @@ function onGameApp() {
 					priority: 39
 				});
 			}
-			//使用技能
-			const hasUsedAbility = await executePrioritizedAbilities();
-			if (hasUsedAbility) {
-				_playerActionTime = new Date();//更新閒置檢查時間
-				return;
+			//檢查技能數量
+			if (queuedAbilities.length > 0) {
+				//依照 priority 由小到大排序
+				queuedAbilities.sort((a, b) => a.priority - b.priority);
+				//使用技能
+				if (await executePrioritizedAbilities()) {
+					_playerActionTime = new Date();//更新閒置檢查時間
+					return;
+				}
 			}
 			//點擊攻擊按鍵
 			await battleWorld.battleUI.AttackButton.simulateAttack();
@@ -7532,10 +7535,6 @@ function onGameApp() {
 		 */
 		async function executePrioritizedAbilities() {
 			try {
-				if (queuedAbilities.length === 0) return false;
-				//依照 priority 由小到大排序
-        		queuedAbilities.sort((a, b) => a.priority - b.priority);
-
 				const characterList = battleWorld.characterList;
 				const attackTargetPos = await battleWorld.getTarget();
 
@@ -7696,9 +7695,11 @@ function onGameApp() {
 		 * @param {Array} characterList - 隊伍角色陣列
 		 * @param {Array} abilityList - 角色技能狀態陣列
 		 */
-		async function determineBeethovenTargetColors(characterList, abilityList) {
+		async function determineBeethovenTargetColors() {
 			try {
-				//找出所有
+				const characterList = battleWorld.characterList || [];
+				const abilityList = battleWorld.characterAbilityList;
+				//統計目前可用的技能顏色數量
 				const availableColors = { yellow: 0, blue: 0, green: 0, red: 0 };
 				for (let i = 0; i < characterList.length; i++) {
 					if (!characterList[i] || characterList[i].hp === 0 || characterList[i].isJob) continue;
@@ -7714,32 +7715,35 @@ function onGameApp() {
 					}
 				}
 				const melodies = beethovenState.melodies;
-				if (beethovenState.totalMelodies === 0) {
-					//不存在旋律時,取有3黃>3藍>3綠>3紅
-					if (availableColors.yellow >= 3) beethovenState.targetColors = ["yellow"];
-					else if (availableColors.blue >= 3) beethovenState.targetColors = ["blue"];
-					else if (availableColors.green >= 3) beethovenState.targetColors = ["green"];
-					else if (availableColors.red >= 3) beethovenState.targetColors = ["red"];
-					else beethovenState.targetColors = ["yellow", "blue", "green"];
-					
-				} else if (beethovenState.totalMelodies === 1) {
+				const total = beethovenState.totalMelodies;
+				let target = "";
+				const baseColors = ["green", "yellow", "blue"];
+				if (total === 0) {
+					//不存在旋律時,尋找可用數量>2的顏色
+					const priority = ["green", "yellow", "blue", "red"];
+					target = priority.find(color => availableColors[color] > 2) || "";
+				} else if (total === 1) {
 					//存在1個旋律時
 					if (melodies.red === 1) {
-						beethovenState.targetColors = ["red"];
+						target = "red";
 					} else {
-						beethovenState.targetColors = ["yellow", "blue", "green"];
+						const currentColor = baseColors.find(color => melodies[color] === 1);
+						if (currentColor && availableColors[currentColor] > 1) {
+							target = currentColor;//湊同色
+						} else {
+							target = baseColors.find(color => color !== currentColor) || "";
+						}
 					}
-				} else if (beethovenState.totalMelodies === 2) {
-					//存在2個旋律時,2旋律同色時,同色旋律優先,2旋律異色時,不同色旋律優先
-					if (melodies.yellow === 2) beethovenState.targetColors = ["yellow"];
-					else if (melodies.blue === 2) beethovenState.targetColors = ["blue"];
-					else if (melodies.green === 2) beethovenState.targetColors = ["green"];
-					else if (melodies.red === 2) beethovenState.targetColors = ["red"];
-					else if (melodies.yellow === 1 && melodies.blue === 1) beethovenState.targetColors = ["green"];
-					else if (melodies.yellow === 1 && melodies.green === 1) beethovenState.targetColors = ["blue"];
-					else if (melodies.blue === 1 && melodies.green === 1) beethovenState.targetColors = ["yellow"];
-					else beethovenState.targetColors = ["yellow", "blue", "green"]; // 防呆保護
+				} else if (total === 2) {
+					//存在2個旋律時
+					const sameColor = ["green", "yellow", "blue", "red"].find(color => melodies[color] === 2);
+					if (sameColor) {//2旋律同色時,同色旋律優先
+						target = sameColor;
+					} else {//2旋律異色時，找出缺少的顏色
+						target = baseColors.find(color => melodies[color] === 0) || "";
+					}
 				}
+				beethovenState.targetColors = target;
 			} catch(error) {
 				debugLog("determineBeethovenTargetColors: " + error);
 			}
@@ -7879,6 +7883,9 @@ function onGameApp() {
 				case "ev_000"://活動
 					break;
 				case "my_001"://主畫面
+					if (_language === 0) {//日文版的啟動畫面
+						//inspectObject(cc.director._runningScene);
+					}
 					break;
 				case "ga_000"://轉蛋
 					break;
@@ -8130,15 +8137,16 @@ function onGameApp() {
 	}
 }
 /**
- * @description 故事劇情頁面,使用 TyranoScript 引擎
+ * @description Handles game scenario initialization and automated actions for TyranoScript engine.
  */
 function onGameScenario() {
 	init();//程式進入點
 	/**
-	 * @description 初始化故事劇情頁面
+	 * @description Entry point for initializing the story scenario page.
 	 */
 	async function init() {
-		await initializationTyrano();
+		const isReady = await initializationTyrano();
+		if (!isReady) return;
 		await onScenarioLoaded();
 		GM_setValue("scenarioStart", Date.now());//通知劇情啟動
 		if (GM_getValue("isSkipScenario", false)) {
@@ -8146,45 +8154,66 @@ function onGameScenario() {
 		}
 	}
 	/**
-	 * @description 等待Tyrano引擎準備完成
+	 * @description Waits until the TyranoScript engine is fully initialized.
+	 * @returns {Promise<boolean>} Resolves true when Tyrano is ready, or false if timed out.
 	 */
 	function initializationTyrano() {
 		return new Promise((resolve) => {
+			const startTime = Date.now();
 			function check() {
-				if (typeof TYRANO !== "undefined" && TYRANO.kag && TYRANO.kag.stat && TYRANO.kag.ftag) {
-					resolve();
+				// Check for 60-second timeout limit
+				if (Date.now() - startTime > 60000) {
+					console.log("[Error] initializationTyrano: TyranoScript engine load timed out after 60 seconds.");
+					resolve(false);
+					return;
+				}
+				// Ensure TYRANO and all required nested properties exist
+				if (typeof TYRANO !== "undefined" && TYRANO?.kag?.stat && TYRANO?.kag?.ftag) {
+					resolve(true);
 				} else {
-					setTimeout(check, 100); 
+					setTimeout(check, 100);
 				}
 			}
 			check();
 		});
 	}
 	/**
-	 * @description TyranoScript載入完成後
+	 * @description Executes speed configurations and auto-skip commands once TyranoScript is ready.
 	 */
 	async function onScenarioLoaded() {
 		try {
-			const kag = TYRANO.kag;
-			//加速設定
+			const kag = TYRANO?.kag;
+			if (!kag || !kag.stat) {
+				console.log("[Warning] TYRANO.kag or kag.stat is currently null. Retrying in 200ms...");
+				setTimeout(onScenarioLoaded, 200);
+				return;
+			}
+			//Configure text speed and skip speed
 			if (kag.config) {
-				kag.config.chSpeed = "0";//文字出現速度
-				kag.config.skipSpeed = "1";//Skip的速度
+				kag.config.chSpeed = "0";//Instant text display
+				kag.config.skipSpeed = "1";//Maximum skip speed
 			}
-			kag.stat.is_skip = true;
-			if (kag.ftag && typeof kag.ftag.nextOrder === "function") {
-				kag.ftag.nextOrder();
+			if (kag.stat) {
+				kag.stat.is_skip = true;
+				if ('is_express_skip' in kag.stat) kag.stat.is_express_skip = true;
+				if ('is_strong_skip' in kag.stat) kag.stat.is_strong_skip = true;
 			}
-			//TyranoScript的skipstart
-			if (kag.ftag && typeof kag.ftag.startTag === "function") {
+			if (kag.tmp) {
+				kag.tmp.is_skip = true;
+			}
+			const hasSkipStartTag = kag.ftag?.master_tag && kag.ftag.master_tag["skipstart"];
+			const isStartTagFunc = typeof kag.ftag?.startTag === "function";
+			if (hasSkipStartTag && isStartTagFunc) {
 				kag.ftag.startTag("skipstart", {});
+			} else if (typeof kag.ftag?.nextOrder === "function") {
+				kag.ftag.nextOrder();
 			}
 		} catch(error) {
 			console.log("onScenarioLoaded: " + error);
 		}
 	}
 	/**
-	 * @description 找出畫面中的Skip Button並點擊
+	 * @description Searches for the 'Skip' button in the DOM and clicks it automatically.
 	 */
 	function searchSkipButtons() {
 		try {
@@ -8196,7 +8225,7 @@ function onGameScenario() {
 				skipBtn.click();
 				GM_setValue("scenarioSkip", Date.now());
 			} else {
-				console.log("no skipBtn");
+				console.log("Searching for skip button...");
 				setTimeout(searchSkipButtons, 500);
 			}
 		} catch(error) {
