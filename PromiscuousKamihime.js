@@ -1845,7 +1845,6 @@ function onGameApp() {
 			});
 			GM_addValueChangeListener("animationSpeedFactor", function(key, oldValue, newValue, remote) {
 				_animationSpeedFactor = newValue;
-				debugLog('Animation Speed: ' + _animationSpeedFactor);
 				applyAnimationSpeed();//動畫加速
 			});
 			GM_addValueChangeListener("skipAnimationDelay", function(key, oldValue, newValue, remote) {
@@ -2208,7 +2207,6 @@ function onGameApp() {
 			const popupConfig = [
 				{classRef: kh.PopupFactory, name: "PopupFactory", desc: "彈窗"},
 				{classRef: kh.PopupFactoryAbilityAcquired, name: "PopupFactoryAbilityAcquired", desc: "獲得技能"},
-				{classRef: kh.PopupFactoryAQ002Brief, name: "PopupFactoryAQ002Brief", desc: "任務/活動簡介"},
 				{classRef: kh.PopupFactoryAQ002Log, name: "PopupFactoryAQ002Log", desc: "任務/任務日誌"},
 				{classRef: kh.PopupFactoryBlack, name: "PopupFactoryBlack", desc: "黑彈窗"},
 				{classRef: kh.PopupFactoryBlackBlue, name: "PopupFactoryBlackBlue", desc: "黑藍彈窗"},
@@ -2370,8 +2368,6 @@ function onGameApp() {
 			//調整遊戲時間尺度
 			cc.director.getScheduler().setTimeScale(_cocosTimeScale);
 			debugLog("TimeScale: " + _cocosTimeScale);
-			//調整戰鬥動畫速度
-			syncAnimationSpeed();
 			setTimeout(initBattleObservers, 0);//初始化戰鬥資訊
 			debugLog('initialization part3 starting...');
 		} catch(error) {
@@ -2383,7 +2379,7 @@ function onGameApp() {
 	*/
 	async function initBattleObservers() {
 		try {
-			if (!kh.BattleWorld || !kh.RaidMessageHandler || !kh.RaidScenarioPlayer || !kh.env || !kh.EnemyStatusBar) {
+			if (!kh.BattleWorld || !kh.RaidMessageHandler || !kh.RaidScenarioPlayer || !kh.env || !kh.EnemyStatusBar || !kh.PlayerGameConfig) {
 				setTimeout(initBattleObservers, 500);
 				return;
 			}
@@ -3494,7 +3490,7 @@ function onGameApp() {
 		try {
 			if (!_httpClient) { debugLog("HTTP connection not initialized"); return; }
 						const questRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_quests",
+				url: `${kh.env.urlRoot}/a_quests`,
 				json: { type: "quest_portal", portal_type: "accessory" }
 			}, "unblock");
 			if (questRes && questRes.body) {
@@ -5399,7 +5395,7 @@ function onGameApp() {
 		try {
 			//求取得幻獸清單
 			const response = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_summons",
+				url: `${kh.env.urlRoot}/a_summons`,
 				json: {display_filter_name: "reduct_summon", selectable_base_filter: "reductable", page: 1, per_page: 100000}
 			}, "unblock");
 			const summonList = response?.body?.data;
@@ -5421,7 +5417,7 @@ function onGameApp() {
 			while (targetSummonIds.length > 0) {
 				const batch = targetSummonIds.splice(0, 20);
 				await _httpClient.post({
-					url: kh.env.urlRoot + "/a_summons_reduct",
+					url: `${kh.env.urlRoot}/a_summons_reduct`,
 					json: { ids: batch }
 				}, "unblock");
 				if (targetSummonIds.length > 0) {
@@ -5475,7 +5471,7 @@ function onGameApp() {
 				try {
 					//求取得飾品清單
 					const response = await _httpClient.get({
-						url: kh.env.urlRoot + "/a_accessories/",
+						url: `${kh.env.urlRoot}/a_accessories/`,
 						json: {display_filter_name: "book_acce",page: pageIndex, per_page: 100000, panels_per_page: 18}
 					}, "unblock");
 					if (response && response.body && response.body.data) {
@@ -5568,7 +5564,7 @@ function onGameApp() {
 			while (targetAccessoriesIds.length > 0) {
 				const batch = targetAccessoriesIds.splice(0, 20);
 				await _httpClient.post({
-					url: kh.env.urlRoot + "/a_accessories_reduct",
+					url: `${kh.env.urlRoot}/a_accessories_reduct`,
 					json: {ids: batch}
 				}, "unblock");
 				if (targetAccessoriesIds.length > 0) {
@@ -5589,7 +5585,7 @@ function onGameApp() {
 			const allEpisodes = [];
 			//取得角色劇情
 			const charRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_library/character_episodes",
+				url: `${kh.env.urlRoot}/a_library/character_episodes`,
 				json: {harem: true, page: 1, per_page: 100000, display_filter_name: "episode_chara"}
 			}, "unblock");
 			const characters = charRes.body.data.filter(c => c.unread_episode);
@@ -5598,7 +5594,7 @@ function onGameApp() {
 				for (const character of characters) {
 					try {
 						const questRes = await _httpClient.get({
-							url: kh.env.urlRoot + "/a_quests",
+							url: `${kh.env.urlRoot}/a_quests`,
 							json: {type: "harem-character", character_id: character.character_id}
 						}, "unblock");
 						//篩選出尚未通關的劇情
@@ -5611,7 +5607,7 @@ function onGameApp() {
 			}
 			//取得幻獸劇情
 			const summonRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_library/summon_episodes",
+				url: `${kh.env.urlRoot}/a_library/summon_episodes`,
 				json: {harem: true, page: 1, per_page: 100000, display_filter_name: "episode_summ"}
 			}, "unblock");
 			const summons = summonRes.body.data.filter(c => c.unread_episode);
@@ -5620,7 +5616,7 @@ function onGameApp() {
 				for (const summon of summons) {
 					try {
 						const questRes = await _httpClient.get({
-							url: kh.env.urlRoot + "/a_quests",
+							url: `${kh.env.urlRoot}/a_quests`,
 							json: {type: "harem-summon", summon_id: summon.summon_id}
 						}, "unblock");
 						//篩選出尚未通關的劇情
@@ -5633,7 +5629,7 @@ function onGameApp() {
 			}
 			//取得英靈劇情
 			const jobRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_library/jobs",
+				url: `${kh.env.urlRoot}/a_library/jobs`,
 				json: {harem: true, page: 1, per_page: 100000}
 			}, "unblock");
 			const souls = jobRes.body.data.filter(c => c.unread_episode);
@@ -5641,7 +5637,7 @@ function onGameApp() {
 				for (const soul of souls) {
 					try {
 						const questRes = await _httpClient.get({
-							url: kh.env.urlRoot + "/a_quests",
+							url: `${kh.env.urlRoot}/a_quests`,
 							json: {type: "harem-job", job_id: soul.job_id}
 						}, "unblock");
 						//篩選出尚未通關的劇情
@@ -5654,7 +5650,7 @@ function onGameApp() {
 			}
 			//Extra_skin
 			const skinsRes = await _httpClient.get({
-				url: kh.env.urlRoot + "/a_library/skins",
+				url: `${kh.env.urlRoot}/a_library/skins`,
 				json: {harem: true, page: 1, per_page: 100000}
 			}, "unblock");
 			const skins = skinsRes.body.data.filter(c => c.unread_episode);
@@ -5662,7 +5658,7 @@ function onGameApp() {
 				for (const skin of skins) {
 					try {
 						const questRes = await _httpClient.get({
-							url: kh.env.urlRoot + "/a_quests",
+							url: `${kh.env.urlRoot}/a_quests`,
 							json: {type: "harem-character", character_id: skin.id}
 						}, "unblock");
 						const quests = questRes.body.data.filter(q => !q.is_cleared && q.a_quest_id);
@@ -5688,12 +5684,12 @@ function onGameApp() {
 				debugLog("watch: " + episode.title);
 				try {
 					await _httpClient.post({
-						url: kh.env.urlRoot + "/a_quests/" + questId + "/start",
+						url: `${kh.env.urlRoot}/a_quests/${questId}/start`,
 						json: {type: questType}
 					}, "unblock");
 					//完成劇情
 					await _httpClient.post({
-						url: kh.env.urlRoot + "/a_battles/" + battleId + "/result",
+						url: `${kh.env.urlRoot}/a_battles/${battleId}/result`,
 						json: {quest_type: questType}
 					}, "unblock");
 				} catch (error) {
@@ -5761,12 +5757,98 @@ function onGameApp() {
 	 */
 	async function downloadMyInformation() {
 		try {
-			debugLog("come soon!");
+			const exportData = {
+				player: { id: 0, name: "unknown", from: "unknown"},
+				characters: [],
+				weapons: [],
+				summons: [],
+				jobs: []
+			};
 			//我的資訊, id,名稱
+			const apiPlayers = kh.createInstance("apiAPlayers");
+			if (apiPlayers) {
+				const playerRes = await apiPlayers.getMeNumeric();
+				exportData.player.id = playerRes?.body?.a_player_id || 0;
+				if (exportData.player.id) {
+					exportData.player.name = playerRes?.body?.name || "unknown";
+				}
+			}
+			const outerUrl = document.referrer;
+			if (outerUrl.includes("skh.johren.games")) {
+				exportData.player.from = "johren";
+			} else if (outerUrl.includes("d2bqgmeis0s2xb")) {
+				exportData.player.from = "ero-labs";
+			} else if (outerUrl.includes("d39cq07z7xwhr4")) {
+				exportData.player.from = "bana-bana";
+			} else if (outerUrl.includes("du5e2cube3h3c")) {
+				exportData.player.from = "ero-labs";
+			} else if (outerUrl.includes("nkh.dmmgames.com")) {
+				exportData.player.from = "nutaku";
+			} else if (outerUrl.includes("osapi.dmm.com")) {
+				exportData.player.from = "dmm";
+			} else if (outerUrl.includes("kamihimeproject.net")) {
+				exportData.player.from = "dmm";
+			}
 			//持有的神姬資料, id,名稱
-			//持有的武器資料, id,名稱,星數
-			//持有的幻獸資料, id,名稱,星數
+			await _httpClient.post({
+				url: `${kh.env.urlRoot}/a_players/me/display_filter/book_chara`,
+				json: {rarity: [],element_type: [],character_type: [],proper_weapon_type: []}
+			}, "unblock");
+			const charactersRes = await _httpClient.get({
+				url: `${kh.env.urlRoot}/a_characters`,
+				json: {display_filter_name: "book_chara", page: 1, per_page: 100000, from_tower: false}
+			}, "unblock");
+			const charas = [];
+			if (charactersRes && charactersRes.body && charactersRes.body.data) {
+				charactersRes.body.data.forEach(function (item) {
+					charas.push(item.character_id);
+				});
+			}
+			for (let i = 0; i < charas.length; i++) {
+				const chara = charas[i];
+				const detailRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_characters/${chara}`}, "unblock");
+				if (detailRes && detailRes.body) {
+					//名稱,稀有度,id
+					const himeData = detailRes.body;
+					exportData.characters.push({character_id:himeData.character_id,name:himeData.name});
+				}
+			}
+			//持有的武器資料, id,名稱
+			await _httpClient.post({
+				url: `${kh.env.urlRoot}/a_players/me/display_filter/book_weapon`,
+				json: {grade:[],special_weapon_type:[],weapon_type:[],weapon_skill:[],skill_effect_size:[],rarity:[],element_type:[]}
+			}, "unblock");
+			const weaponsRes = await _httpClient.get({
+				url: `${kh.env.urlRoot}/a_weapons`,
+				json: {display_filter_name:"book_weapon",page:1,per_page:100000}
+			}, "unblock");
+			if (weaponsRes && weaponsRes.body && weaponsRes.body.data) {
+				weaponsRes.body.data.forEach(function (item) {
+					exportData.weapons.push({weapon_id:item.weapon_id,name:item.name});
+				});
+			}
+			//持有的幻獸資料, id,名稱
+			await _httpClient.post({
+				url: `${kh.env.urlRoot}/a_players/me/display_filter/book_summon`,
+				json: {rarity:[],element_type:[],grade:[]}
+			}, "unblock");
+			const summonsRes = await _httpClient.get({
+				url: `${kh.env.urlRoot}/a_summons`,
+				json: {display_filter_name:"book_summon",page:1,per_page:100000}
+			}, "unblock");
+			if (summonsRes && summonsRes.body && summonsRes.body.data) {
+				summonsRes.body.data.forEach(function (item) {
+					exportData.summons.push({summon_id:item.summon_id,name:item.name});
+				});
+			}
 			//持有的英靈資料, id,名稱
+			const jobsRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_jobs`}, "unblock");
+			if (jobsRes && jobsRes.body && jobsRes.body.data) {
+				jobsRes.body.data.forEach(function (item) {
+					if (item.is_acquired) exportData.jobs.push({job_id: item.job_id, name: item.name});
+				});
+			}
+			exportToJsonFile("Watashi", JSON.stringify(exportData, null, 2));
 		} catch (error) {
 			debugLog("downloadMyInformation: " + error);
 		}
@@ -5789,7 +5871,7 @@ function onGameApp() {
 			const charas = [];
 			if (charactersRes && charactersRes.body && charactersRes.body.data) {
 				charactersRes.body.data.forEach(function (item) {
-					charas.push(item.a_character_id);
+					charas.push(item.character_id);
 				});
 			}
 			//查詢神姬
@@ -5844,7 +5926,7 @@ function onGameApp() {
 				const chara = charas[i];
 				try {
 					//查詢神姬詳細資料
-					const detailRes = await _httpClient.get({url: kh.env.urlRoot + "/characters/" + chara}, "unblock");
+					const detailRes = await _httpClient.get({url: `${kh.env.urlRoot}/characters/${chara}`}, "unblock");
 					if (detailRes && detailRes.body) {
 						const himeName = detailRes.body.name;//取得神姬名字
 						debugLog("load " + (i+1) + " | " + charas.length + ", id = " + chara + ", " + himeName);
@@ -6009,7 +6091,7 @@ function onGameApp() {
 				const weaponId = weaponIds[i];
 				try {
 					const detailRes = await _httpClient.get({
-						url: kh.env.urlRoot + "/weapons/" + weaponId
+						url: `${kh.env.urlRoot}/weapons/${weaponId}`
 					}, "unblock");
 					if (detailRes && detailRes.body) {
 						const weaponName = detailRes.body.name;
@@ -6187,7 +6269,7 @@ function onGameApp() {
 				try {
 					//查詢幻獸詳細資料
 					const detailRes = await _httpClient.get({
-						url: kh.env.urlRoot + "/summons/" + summonId
+						url: `${kh.env.urlRoot}/summons/${summonId}`
 					}, "unblock");
 					if (detailRes && detailRes.body) {
 						const summonName = detailRes.body.name;//取得幻獸名字
@@ -6296,7 +6378,7 @@ function onGameApp() {
 				try {
 					//查詢英靈詳細資料
 					const detailRes = await _httpClient.get({
-						url: kh.env.urlRoot + "/a_jobs/" + jobId
+						url: `${kh.env.urlRoot}/a_jobs/${jobId}`
 					}, "unblock");
 					if (detailRes && detailRes.body) {
 						const jobName = detailRes.body.name;//取得英靈名字
@@ -6366,27 +6448,18 @@ function onGameApp() {
 	 */
 	function applyAnimationSpeed() {
 		try {
-			debugLog("apply animation speed");
-			if (typeof kh !== 'undefined' && kh.createInstance && typeof cc !== 'undefined' && cc.director && cc.director._runningScene) {
-				const battleWorld = kh.createInstance("battleWorld");
-				if (battleWorld && battleWorld.battleUI) {syncAnimationSpeed();}
+			kh.PlayerGameConfig.prototype.BATTLE_SPEED_SETTINGS.quick = _animationSpeedFactor;
+			debugLog('Animation Speed: ' + _animationSpeedFactor);
+			//戰鬥中及時改變
+			const battleWorld = kh.createInstance("battleWorld");
+			if (battleWorld && battleWorld.battleUI) {
+				const gameConfig = kh.createInstance("playerGameConfig");
+				if (gameConfig && gameConfig.BATTLE_SPEED_SETTINGS) {
+					gameConfig.BATTLE_SPEED_SETTINGS.quick = _animationSpeedFactor;
+				}
 			}
 		} catch(error) {
 			debugLog("applyAnimationSpeed: " + error);
-		}
-	}
-	/**
-	 * @description 改變攻擊動畫的演出速度
-	 */
-	function syncAnimationSpeed() {
-		try {
-			const gameConfig = kh.createInstance("playerGameConfig");
-			if (gameConfig && gameConfig.BATTLE_SPEED_SETTINGS && gameConfig.BATTLE_SPEED_SETTINGS.quick !== _animationSpeedFactor) {
-				gameConfig.BATTLE_SPEED_SETTINGS.quick = _animationSpeedFactor;
-				debugLog('Animation Speed: ' + _animationSpeedFactor);
-			}
-		} catch(error) {
-			debugLog("syncAnimationSpeed: " + error);
 		}
 	}
 	/**
@@ -6677,7 +6750,7 @@ function onGameApp() {
 					default: return;
 				}
 				await _httpClient.post({
-					url: kh.env.urlRoot + "/a_battles/" + _battleId + "/help_request",
+					url: `${kh.env.urlRoot}/a_battles/${_battleId}/help_request`,
 					json: {quest_type: _questType, to_all: toAll, to_friends: toFriends, to_union_members: toUnion}
 				}, "unblock");			
 			} else if (questInfo._isJoinedRaid) {
@@ -6693,7 +6766,7 @@ function onGameApp() {
 					default: return;
 				}
 				await _httpClient.post({
-					url: kh.env.urlRoot + "/a_battles/" + _battleId + "/help_request",
+					url: `${kh.env.urlRoot}/a_battles/${_battleId}/help_request`,
 					json: {quest_type: _questType, to_all: toAll, to_friends: toFriends, to_union_members: toUnion}
 				}, "unblock");
 			}
@@ -8201,7 +8274,7 @@ function onGameScenario() {
 			if (kag.tmp) {
 				kag.tmp.is_skip = true;
 			}
-			const hasSkipStartTag = kag.ftag?.master_tag && kag.ftag.master_tag["skipstart"];
+			const hasSkipStartTag = kag.ftag?.master_tag && kag.ftag.master_tag.skipstart;
 			const isStartTagFunc = typeof kag.ftag?.startTag === "function";
 			if (hasSkipStartTag && isStartTagFunc) {
 				kag.ftag.startTag("skipstart", {});
