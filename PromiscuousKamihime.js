@@ -1701,7 +1701,7 @@ function onGameApp() {
 	let _raidPointsDelayOk = false;//是否已關閉功績顯示
 	let _attackButtonHookOk = false;//是否已加入點擊攻擊更新時間戳記
 	let _lastBattleTimestamp = 0;//記錄上次戰鬥時更新的時間戳記
-	let _lastLoggedDamage = "";//記錄上次印出的傷害訊息,防重覆訊息
+	//let _lastLoggedDamage = "";//記錄上次印出的傷害訊息,防重覆訊息
 	let _battlingTimer = null;//用來儲存 setTimeout 的 ID
 	let _isBattlingExecuting = false;//執行鎖，防止非同步重疊
 	let _battlingInstanceCount = 0;//偵測用計數器
@@ -1739,8 +1739,8 @@ function onGameApp() {
 	let _raidEventID = 0;//暫存事件ID
 
 	//檢視傳輸資訊
-	const _postQueue = [];//建立一個存放送出的Http字串的佇列
-	let _isProcessingQueue = false;//標記目前是否正在處理佇列中，避免重複觸發
+	const _httpQueue = [];//建立一個存放送出的Http字串的佇列
+	let _isProcessingHttpQueue = false;//標記目前是否正在處理佇列中，避免重複觸發
 	let _battleStartInfo = null;//前一場戰鬥的啟動資訊,{url:?,Json:?}
 	let _battleStartTime = 0;//前一場戰鬥的啟動時間,避免連續點擊加入戰鬥
 	const _imageCollector = false;//要抓遊戲裡的圖才打開,避免拖累遊戲
@@ -2007,7 +2007,7 @@ function onGameApp() {
 	async function initNetworkHooks() {
 		try {
 			//等待kh建立完成
-			if (!khutil || !kh || !kh.Monitor || !kh.HttpConnection || !kh.PlayerGameConfig || !kh.Character || !kh.Enemy || !kh.Summon) {
+			if (!khutil || !kh || !kh.Monitor || !kh.HttpConnection || !kh.PlayerGameConfig || !kh.Character || !kh.Enemy || !kh.Summon || !kh.pc || !kh.pc.enh_evo ) {
 				setTimeout(initNetworkHooks, 500);
 				return;
 			}
@@ -2025,7 +2025,7 @@ function onGameApp() {
 			//攔截所有發往遊戲伺服器的 GET 請求
 			kh.HttpConnection.prototype.getRaw = kh.HttpConnection.prototype.get;
 			kh.HttpConnection.prototype.get = function (requestData, reqType = "normal") {
-				_postQueue.push(JSON.stringify( {...requestData, method: 'get'}));flushRequestQueue();
+				_httpQueue.push(JSON.stringify( {...requestData, method: 'get'}));flushRequestQueue();
 				this.errorIfNotSetSessionId();
 				return this._wrapFireEvent(async (req) => {
 					req = this._normalizeId(req);
@@ -2040,7 +2040,7 @@ function onGameApp() {
 			//攔截所有發往遊戲伺服器的 POST 請求
 			kh.HttpConnection.prototype.postRaw = kh.HttpConnection.prototype.post;
 			kh.HttpConnection.prototype.post = function (requestData, reqType = "normal") {
-				_postQueue.push(JSON.stringify({ ...requestData, method: 'post' }));flushRequestQueue();
+				_httpQueue.push(JSON.stringify({ ...requestData, method: 'post' }));flushRequestQueue();
 				this.errorIfNotSetSessionId();
 				return this._wrapFireEvent(async (req) => {
 					req = this._normalizeId(req);
@@ -2058,7 +2058,7 @@ function onGameApp() {
 			//攔截所有發往遊戲伺服器的 PUT 請求
 			kh.HttpConnection.prototype.putRaw = kh.HttpConnection.prototype.put;
 			kh.HttpConnection.prototype.put = function (requestData, reqType = "normal") {
-				_postQueue.push(JSON.stringify({ ...requestData, method: 'put' }));flushRequestQueue();
+				_httpQueue.push(JSON.stringify({ ...requestData, method: 'put' }));flushRequestQueue();
 				this.errorIfNotSetSessionId();
 				return this._wrapFireEvent(async (req) => {
 					req = this._normalizeId(req);
@@ -2098,15 +2098,19 @@ function onGameApp() {
 			}
 			//初始化 HTTP 連接
 			if (!_httpClient) {_httpClient = kh.createInstance("HttpConnection");}
-			//動畫
+			//降低動畫延遲
 			kh.Summon.prototype.FADE_SPEED = 0.05;//default 0.3
 			kh.CHARACTER_PANEL_BAR_ANIMATION_DURATION = 0.05;//default 0.1
 			kh.ENEMY_STATUS_BAR_ANIMATION_DURATION = 0.01;//default 0.08
 			kh.AVATAR_DIE_FADEOUT_DELAY_TIME = 0.05;//default 0.5
-			//動畫加速
+			kh.StageProgress.prototype.ANIMATION_START_DELAY = 0.05;//default 0.2
+			kh.StageProgress.prototype.FADE_IN_SPEED = 0.05;//default 0.5
+			kh.StageProgress.prototype.FADE_OUT_SPEED = 0.05;//default 0.5
+			await initAnimationAccelerator();
+			//攻擊動畫加速
 			kh.PlayerGameConfig.prototype.BATTLE_SPEED_SETTINGS.quick = _animationSpeedFactor;
 			debugLog('Animation Speed: ' + _animationSpeedFactor);
-			//動畫延遲
+			//戰鬥進場動畫延遲
 			if (!_originalGetPromiseToDelayAnimation) {
 				_originalGetPromiseToDelayAnimation = khutil.getPromiseToDelayAnimation;
 				_originalCharacterSpeed = kh.Character.prototype.ENTER_BATTLE_ANIMATION_SPEED;
@@ -2129,6 +2133,57 @@ function onGameApp() {
 			debugLog('initialization part2 starting...');
 		} catch(error) {
 			debugLog("initNetworkHooks: " + error);
+		}
+	}
+	/**
+	 * @description 加速遊戲強化與突破的動畫
+	 */
+	async function initAnimationAccelerator() {
+		try {
+			for (const moduleName in kh.pc.enh_evo) {
+				//只取強化/突破模組
+				const isTargetModule = /^(enh|evo)_\d+/.test(moduleName);
+				if (!isTargetModule) continue;
+				//檢查原型物件
+				const targetPrototype = kh.pc.enh_evo[moduleName]?.SceneDelegate?.prototype;
+				if (!targetPrototype) continue;
+				await overrideAnimationDelays(targetPrototype, moduleName);
+			}
+		} catch(error) {
+			debugLog("initAnimationAccelerator: " + error);
+		}
+	}
+	/**
+	 * @description 抽離出的輔助函式：負責攔截目標原型並修改延遲參數
+	 * @param {Object} targetPrototype - 目標模組的 SceneDelegate 原型物件
+	 * @param {String} moduleName - 模組名稱
+	 */
+	async function overrideAnimationDelays(targetPrototype, moduleName) {
+		try {
+			const delayMs = 50;//50ms
+			//攔截計算動畫播放時間
+			if (targetPrototype._calcSpendMillisec) {
+				const originalCalcSpend = targetPrototype._calcSpendMillisec;
+				targetPrototype._calcSpendMillisec = function (...args) {
+					return delayMs;
+				};
+			}
+			//攔截突破動畫播放
+			if (targetPrototype._playEvoAnimations) {
+				const originalPlayEvo = targetPrototype._playEvoAnimations;
+				targetPrototype._playEvoAnimations = function (...args) {
+					args[6] = delayMs;return originalPlayEvo.apply(this, args);
+				};
+			}
+			//攔截強化動畫播放
+			if (targetPrototype._playEnhAnimations) {
+				const originalPlayEnh = targetPrototype._playEnhAnimations;
+				targetPrototype._playEnhAnimations = function (...args) {
+					args[6] = delayMs;return originalPlayEnh.apply(this, args);
+				};
+			}
+		} catch(error) {
+			debugLog("overrideAnimationDelays(" + moduleName + ")"+ error);
 		}
 	}
 	/**
@@ -2401,6 +2456,8 @@ function onGameApp() {
 				sendTurnText(`(${_currentStage}/${_maxStage}),${t+1}`);
 				return result;
 			}
+			//進場動畫延遲時間
+			kh.BattleWorld.prototype.ENTER_BATTLE_ANIMATION_DELAY = 100;//預設600毫秒
 			//攔截自己發送的戰鬥指令,檢測自動戰鬥中卡住的情況
 			const originalMethodUseAbility = kh.BattleWorld.prototype.useAbility;
 			kh.BattleWorld.prototype.useAbilityRaw = kh.BattleWorld.prototype.useAbility;
@@ -3133,6 +3190,8 @@ function onGameApp() {
 			"characterStatusPanelHandler",
 			"gameSession",
 			"HttpConnection",
+			"HttpSuperAgentConnection",
+			"httpOauth",
 			"logger",
 			"Monitor",
 			"myselfInfoRepository",
@@ -3307,6 +3366,7 @@ function onGameApp() {
 			//fetchElementQuest();
 			//fetchMaterialQuest();
 			//fetchAccessoryQuest();
+			//fetchEpicQuest();
 			//使用藥水
 			//await useSuperPotion();
 			//await usePotion();
@@ -3412,17 +3472,17 @@ function onGameApp() {
 	 */
 	function flushRequestQueue() {
 		//如果已經在處理中了，就直接返回，讓原本的迴圈繼續跑即可
-		if (_isProcessingQueue) return;
+		if (_isProcessingHttpQueue) return;
 		//檢查如果佇列空了，就關閉處理狀態
-		if (_postQueue.length === 0) {
-			_isProcessingQueue = false;
+		if (_httpQueue.length === 0) {
+			_isProcessingHttpQueue = false;
 			return;
 		}
 		//鎖定並開始處理
-		_isProcessingQueue = true;
+		_isProcessingHttpQueue = true;
 		setTimeout(function() {
 			//取出佇列中最前端資料
-			const rawJsonStr = _postQueue.shift();
+			const rawJsonStr = _httpQueue.shift();
 			//有開啟顯示時,檢視字串
 			if (_logPacketsEnabled) {debugLog(rawJsonStr);}
 			try {
@@ -3445,7 +3505,7 @@ function onGameApp() {
 				debugLog("Parsing JSON failed: " + error.message);
 			}
 			//處裡完這一個之後，解鎖狀態，並立刻遞迴檢查下一個
-			_isProcessingQueue = false;
+			_isProcessingHttpQueue = false;
 			flushRequestQueue();
 		}, 0);
 	}
@@ -3489,7 +3549,7 @@ function onGameApp() {
 	async function fetchAccessoryQuest() {
 		try {
 			if (!_httpClient) { debugLog("HTTP connection not initialized"); return; }
-						const questRes = await _httpClient.get({
+			const questRes = await _httpClient.get({
 				url: `${kh.env.urlRoot}/a_quests`,
 				json: { type: "quest_portal", portal_type: "accessory" }
 			}, "unblock");
@@ -3518,6 +3578,22 @@ function onGameApp() {
 			}
 		} catch (error) {
 			debugLog("fetchAccessoryQuest: " + error);
+		}
+	}
+	/**
+	 * @description 查詢用戶的史詩關卡狀態
+	 */
+	async function fetchEpicQuest() {
+		try {
+			if (!_httpClient) { debugLog("HTTP connection not initialized"); return; }
+			const epicRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_epic_subject`}, "unblock");
+			if (epicRes && epicRes.body) {
+				debugLog(JSON.stringify(epicRes.body, null, 2));
+			} else {
+				debugLog("no a_epic_subject");
+			}
+		} catch (error) {
+			debugLog("fetchEpicQuest: " + error);
 		}
 	}
 	/**
@@ -7545,10 +7621,8 @@ function onGameApp() {
 							if (charCustomPriority < 70) {
 								if (beethovenState.targetColors === skillColor) {
 									//是需要的目標顏色,提升至優先區(10~19)
-									const priorityAdjustments = {red: -50, green: -20, yellow: -30, blue: -40};
-									calculatedPriority = priorityAdjustments[skillColor] 
-										? calculatedPriority + priorityAdjustments[skillColor] 
-										: 15;
+									const priorityAdjustments = {green: -20, yellow: -30, blue: -40, red: -50};
+									if (skillColor in priorityAdjustments) calculatedPriority + priorityAdjustments[skillColor];
 								}
 							}
 						}
@@ -7570,7 +7644,7 @@ function onGameApp() {
 			const cureItems = battleWorld?.battleStatus?._cureItems;
 			const hasPotion = (cureItems?.[0]?.count ?? 0) > 0;
 			const hasSuperPotion = (cureItems?.[1]?.count ?? 0) > 0;
-			const potionStatus = evaluatePotionNeeds(characterList);
+			const potionStatus = evaluatePotionNeeds();
 			//排在綠技最後
 			if (potionStatus.needs > 0 && hasPotion) {
 				queuedAbilities.push({
@@ -7633,7 +7707,14 @@ function onGameApp() {
 					let targetChara = null;
 					if (abilityItem.isSelectable) {
 						//取得技能指定目標
-						const targetIndex = findAbilityTarget(abilityItem.selectableType, characterList);
+						let targetIndex = findAbilityTarget(abilityItem.characterIndex, abilityItem.selectableType);
+						//孔明1技不可指定自己
+						if (character.isJob && character.id === 41 && abilityPos === 0) {
+							if (targetIndex === abilityItem.characterIndex) {
+								targetIndex = -1;
+							}
+						}
+						//其他特殊指定的技能寫在這
 						if (targetIndex === -1) continue;
 						targetChara = characterList[targetIndex];//取得目標角色
 					}
@@ -7665,20 +7746,37 @@ function onGameApp() {
 		}
 		/**
 		 * @description 根據技能類型尋找合適的對象
+		 * @param {Number} characterIndex - 使用技能的角色索引
 		 * @param {String} abilityType - 技能類型 (例如："revive", "heal", "buff")
-		 * @param {Array} characterList - 隊伍角色陣列
 		 * @returns {Number} 若成功回傳技能指定對象索引，否則回傳 -1
 		 */
-		function findAbilityTarget(abilityType, characterList) {
+		function findAbilityTarget(characterIndex, abilityType) {
 			try {
-				//復活,找第一個死亡的角色
+				const characterList = battleWorld.characterList;
+				//復活,隨機選取死亡的角色
 				if (abilityType === "revive") {
-					return battleWorld?.fallenList?.[0]?.index ?? -1;
+					const fallenList = battleWorld?.fallenList;
+					if (fallenList && fallenList.length > 0) {
+						const randomIndex = Math.floor(Math.random() * fallenList.length);
+						return fallenList[randomIndex]?.index ?? -1;
+					}
+					return -1;
 				}
-				if (!Array.isArray(characterList)) return -1;
-				//增益,找第一個存活的角色
+				//增益,優先尋找非自己存活的隊友(隨機),沒有才是自己
 				if (abilityType === "buff") {
-					return characterList.findIndex(character => character?.hp > 0);
+					//所有存活且非自己的隊友索引
+					const validTeammateIndices = [];
+					characterList.forEach((character, index) => {
+						if (character?.hp > 0 && index !== characterIndex) {
+							validTeammateIndices.push(index);
+						}
+					});
+					//隨機選取
+					if (validTeammateIndices.length > 0) {
+						const randomIndex = Math.floor(Math.random() * validTeammateIndices.length);
+						return validTeammateIndices[randomIndex];
+					}
+					return characterIndex;
 				}
 				//治癒,找血量百分比最低
 				if (abilityType === "heal") {
@@ -7704,18 +7802,16 @@ function onGameApp() {
 		}
 		/**
 		 * @description 評估是否需要喝水
-		 * @param {Array} characterList - 隊伍角色陣列
 		 * @returns {{ needs: number, highestPriorityTargetIndex: number, lowestHpRatio: number, shouldUse: boolean }}
 		 * - needs: 血量低於 50% 且需要喝水的角色總數
 		 * - highestPriorityTargetIndex: 最優先需要喝水的角色陣列索引
 		 * - lowestHpRatio: 優先目標的血量比例
 		 * - shouldUse: 是否喝水
 		 */
-		function evaluatePotionNeeds(characterList) {
+		function evaluatePotionNeeds() {
 			const status = { needs: 0, highestPriorityTargetIndex: -1, lowestHpRatio: 1, shouldUse: false };
 			try {
-				if (!Array.isArray(characterList)) return status;
-
+				const characterList = battleWorld.characterList;
 				characterList.forEach((character, index) => {
 					const data = character?._avatarData;
 					if (!data || data.hp === 0 || data.hpmax === 0) return;
@@ -7817,6 +7913,9 @@ function onGameApp() {
 					}
 				}
 				beethovenState.targetColors = target;
+				//debugLog(`(N)r_g_y_b: ${availableColors.red}, ${availableColors.green}, ${availableColors.yellow}, ${availableColors.blue}`);
+				//debugLog(`(M)r_g_y_b: ${beethovenState.melodies.red}, ${beethovenState.melodies.green}, ${beethovenState.melodies.yellow}, ${beethovenState.melodies.blue}`);
+				//debugLog(`next: ${beethovenState.targetColors}`);
 			} catch(error) {
 				debugLog("determineBeethovenTargetColors: " + error);
 			}
