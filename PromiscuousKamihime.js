@@ -594,7 +594,7 @@ function onGameFrame() {
 			const globalScaleSelect = document.createElement("select");
 			globalScaleSelect.setAttribute("style", selectStyle);
 			applySelectHoverEffect(globalScaleSelect);
-			const scaleOptions = [1.0, 2.0, 8.0, 14.0, 20.0, 100.0];
+			const scaleOptions = [1.0, 1.5, 2.0, 8.0, 14.0, 20.0, 100.0];
 			const currentSavedScale = GM_getValue("gameTimeScale", 1.0);
 			scaleOptions.forEach(function(value) {
 				const opt = document.createElement("option"); opt.value = value; opt.text = value;
@@ -1841,7 +1841,14 @@ function onGameApp() {
 				});
 			});
 			GM_addValueChangeListener("shopping", function() {
-				runTaskSafely(autoPurchaseShopItems);//商店兌換
+				runTaskSafely(async () => {
+					try {
+						const successCount = await autoPurchaseShopItems();//商店兌換
+						if (successCount > 0) await autoPurchaseShopItems();
+					} catch (error) {
+						debugLog("shopping: " + error);
+					}
+				});
 			});
 			GM_addValueChangeListener("animationSpeedFactor", function(key, oldValue, newValue, remote) {
 				_animationSpeedFactor = newValue;
@@ -3799,7 +3806,6 @@ function onGameApp() {
 			}
 			//進入幻獸點關卡
 			if (await launchRaidBattle(currentQuest)) {
-				await sleep(1000);
 				return false;
 			} else {
 				debugLog("launch fail, give up");
@@ -3875,7 +3881,6 @@ function onGameApp() {
 			}
 			//進入關卡
 			if (await launchRaidBattle(currentQuest)) {
-				await sleep(1000);
 				return false;
 			} else {
 				debugLog("launch fail, give up");
@@ -3940,7 +3945,6 @@ function onGameApp() {
 				}
 				//進入幻獸點關卡
 				if (await launchRaidBattle(currentQuest)) {
-					await sleep(1000);
 					return false;
 				} else {
 					debugLog("launch fail, give up");
@@ -4284,6 +4288,13 @@ function onGameApp() {
 				a_quest_id: targetBattle.quest_id,
 				is_own_raid: targetBattle.is_own_raid
 			});
+			//等到進場
+			let isTimeout = true;
+			for (let i = 1; i < 150; i++) {
+			 	await sleep(200);
+			 	if (_currentSceneName === "battle"){isTimeout=false;break;} 
+			}
+			if (isTimeout) debugLog("wait timeout");
 			return false;
 		} catch (error) {
 			debugLog("botUnion: " + error);
@@ -4366,6 +4377,13 @@ function onGameApp() {
 				a_quest_id: targetBattle.quest_id,
 				is_own_raid: targetBattle.is_own_raid
 			});
+			//等到進場
+			let isTimeout = true;
+			for (let i = 1; i < 150; i++) {
+			 	await sleep(200);
+			 	if (_currentSceneName === "battle"){isTimeout=false;break;} 
+			}
+			if (isTimeout) debugLog("wait timeout");
 			return false;
 		} catch (error) {
 			debugLog("robotUnionTrigger: " + error);
@@ -4501,12 +4519,6 @@ function onGameApp() {
 				//0:一般Raid優先, 1:事件Raid優先
 				if (await joinPublicRaids(false)) {
 					debugLog("get a quest...");
-					//等到進場
-					for (let j = 1; j < 150; j++) {
-						await sleep(200);
-						if (_currentSceneName === "battle") break;
-						if (_autonomousRobot !== "public") break;
-					}
 					break;
 				}
 				debugLog("no quest...");
@@ -4584,9 +4596,6 @@ function onGameApp() {
 			const cannotProgressInfo = response?.body?.cannot_progress_info;
 			if (cannotProgressInfo) {
 				await showBattleFail(cannotProgressInfo);
-				if (cannotProgressInfo.type === "has_unconfirmed_battle") {
-					await settleUnverifiedBattles();
-				}
 				return false; 
 			}			
 			//const is_own_raid = response.body.is_own_raid;
@@ -4599,6 +4608,13 @@ function onGameApp() {
 				a_quest_id: item.quest_id,
 				is_own_raid: false
 			});
+			//等到進場
+			let isTimeout = true;
+			for (let i = 1; i < 50; i++) {
+			 	await sleep(200);
+			 	if (_currentSceneName === "battle"){isTimeout=false;break;} 
+			}
+			if (isTimeout) debugLog("wait timeout");
 			return true; 
 		} catch (error) {
 			debugLog("joinPublicRaids: " + error);
@@ -4638,9 +4654,6 @@ function onGameApp() {
 			const cannotProgressInfo = response?.body?.cannot_progress_info;
 			if (cannotProgressInfo) {
 				await showBattleFail(cannotProgressInfo);
-				if (cannotProgressInfo.type === "has_unconfirmed_battle") {
-					await settleUnverifiedBattles();
-				}
 				return false; 
 			}			
 			//進入關卡
@@ -4654,6 +4667,13 @@ function onGameApp() {
 				a_quest_id: item.quest_id,
 				is_own_raid: false
 			});
+			//等到進場
+			let isTimeout = true;
+			for (let i = 1; i < 150; i++) {
+			 	await sleep(200);
+			 	if (_currentSceneName === "battle"){isTimeout=false;break;} 
+			}
+			if (isTimeout) debugLog("wait timeout");
 			return true; 
 		} catch (error) {
 			debugLog("botRescueCode: " + error);
@@ -4791,9 +4811,13 @@ function onGameApp() {
 			switch (cannotProgressInfo.type) {
 				case "has_quest_in_progress":
 					debugLog("has quest in progress");
+					//讓繼續戰鬥視窗跳出並點擊
+					await kh.createInstance("router").navigate("quest/q_001");
 					break;
 				case "has_unconfirmed_battle":
 					debugLog("has unconfirmed battle");
+					//清除已完成戰鬥
+					await settleUnverifiedBattles();
 					break;
 				case "does_not_have_enough_ap":
 					debugLog("does not have enough ap");
@@ -4846,6 +4870,13 @@ function onGameApp() {
 				a_quest_id: nextQuestId,
 				is_own_raid: isOwnRaid
 			});
+			//等到進場
+			let isTimeout = true;
+			for (let i = 1; i < 150; i++) {
+			 	await sleep(200);
+			 	if (_currentSceneName === "battle"){isTimeout=false;break;} 
+			}
+			if (isTimeout) debugLog("wait timeout");
 			return true; 
 		} catch (error) {
 			debugLog("launchRaidBattle: " + error);
@@ -4897,6 +4928,13 @@ function onGameApp() {
 				a_quest_id: nextQuestId,
 				is_own_raid: isOwnRaid
 			});
+			//等到進場
+			let isTimeout = true;
+			for (let i = 1; i < 150; i++) {
+			 	await sleep(200);
+			 	if (_currentSceneName === "battle"){isTimeout=false;break;} 
+			}
+			if (isTimeout) debugLog("wait timeout");
 			return true; 
 		} catch (error) {
 			debugLog("launchRaidBattleAgain: " + error);
@@ -4942,7 +4980,7 @@ function onGameApp() {
 		try {
 			if (!_httpClient) { debugLog("HTTP connection not initialized"); return; }
 			debugLog("execute luck gacha");
-			const luckCategoriesId = 1000060;//每期加10
+			const luckCategoriesId = 1000070;//每期加10
 			const cat1Res = await _httpClient.get({url: `${kh.env.urlRoot}/gacha_categories`}, "unblock");
 			const hasTargetCategory = cat1Res.body.tabs.some(tab => 
 				tab.banners.some(banner => banner.category_id === luckCategoriesId)
@@ -5263,8 +5301,10 @@ function onGameApp() {
 	}
 	/**
 	 * @description 商店交換物品,主要是每月限量交換的物品
+	 * @returns {number} 回傳成功次數
 	 */
 	async function autoPurchaseShopItems() {
+		let successCount = 0;//記錄成功次數
 		try {
 			if (!_httpClient) { debugLog("HTTP connection not initialized");return;}
 			const purchaseQueue = [];
@@ -5275,10 +5315,10 @@ function onGameApp() {
 				const freeJewelsProduct = coinShopRes.body.catalogs
 					.flatMap(catalog => catalog.products)
 					.find(product => product.product_id === 11018);
-				if (freeJewelsProduct && Number(freeJewelsProduct.stock_info.amount) > 0) {
+				if (freeJewelsProduct && freeJewelsProduct.stock_info.amount > 0) {
 					purchaseQueue.push({
 						product_id: freeJewelsProduct.product_id,
-						amount: Number(freeJewelsProduct.stock_info.amount)
+						amount: freeJewelsProduct.stock_info.amount
 					});
 				}
 			}
@@ -5296,12 +5336,12 @@ function onGameApp() {
 				const RAID_TARGET_IDS = [100001,100002,100003,100005,100099,100100,100101,100201];
 				const allRaidProducts = raidShopRes.body.catalogs.flatMap(c => c.products);
 				const itemsToExchange = allRaidProducts.filter(p => 
-					RAID_TARGET_IDS.includes(p.product_id) && Number(p.stock_info.amount) > 0
+					RAID_TARGET_IDS.includes(p.product_id) && p.stock_info.amount > 0
 				);
 				for (const item of itemsToExchange) {
 					purchaseQueue.push({
 						product_id: item.product_id,
-						amount: Number(item.stock_info.amount)
+						amount: item.stock_info.amount
 					});
 				}
 			}
@@ -5319,12 +5359,12 @@ function onGameApp() {
 				const EVENT_TARGET_IDS = [73001,73003,75002];
 				const allEventProducts = eventShopRes.body.catalogs.flatMap(c => c.products);
 				const itemsToExchange = allEventProducts.filter(p => 
-					EVENT_TARGET_IDS.includes(p.product_id) && Number(p.stock_info.amount) > 0
+					EVENT_TARGET_IDS.includes(p.product_id) && p.stock_info.amount > 0
 				);
 				for (const item of itemsToExchange) {
 					purchaseQueue.push({
 						product_id: item.product_id,
-						amount: Number(item.stock_info.amount)
+						amount: item.stock_info.amount
 					});
 				}
 			}
@@ -5335,10 +5375,10 @@ function onGameApp() {
 				const draconicProduct = draconicShopRes.body.catalogs
 					.flatMap(catalog => catalog.products)
 					.find(product => product.product_id === 41010);
-				if (draconicProduct && Number(draconicProduct.stock_info.amount) > 0) {
+				if (draconicProduct && draconicProduct.stock_info.amount > 0) {
 					purchaseQueue.push({
 						product_id: draconicProduct.product_id,
-						amount: Number(draconicProduct.stock_info.amount)
+						amount: draconicProduct.stock_info.amount
 					});
 				}
 			}
@@ -5351,12 +5391,12 @@ function onGameApp() {
 				const LABRO_TARGET_IDS = [43046,93049,93050];
 				const allLabroProducts = labroShopRes.body.catalogs.flatMap(c => c.products);
 				const itemsToExchange = allLabroProducts.filter(p => 
-					LABRO_TARGET_IDS.includes(p.product_id) && Number(p.stock_info.amount) > 0
+					LABRO_TARGET_IDS.includes(p.product_id) && p.stock_info.amount > 0
 				);
 				for (const item of itemsToExchange) {
 					purchaseQueue.push({
 						product_id: item.product_id,
-						amount: Number(item.stock_info.amount)
+						amount: item.stock_info.amount
 					});
 				}
 			}
@@ -5369,12 +5409,12 @@ function onGameApp() {
 				const AWAKEN_TARGET_IDS = [201001,201003,201005];
 				const allAwakenProducts = awakenshopRes.body.catalogs.flatMap(c => c.products);
 				const itemsToExchange = allAwakenProducts.filter(p => 
-					AWAKEN_TARGET_IDS.includes(p.product_id) && Number(p.stock_info.amount) > 0
+					AWAKEN_TARGET_IDS.includes(p.product_id) && p.stock_info.amount > 0
 				);
 				for (const item of itemsToExchange) {
 					purchaseQueue.push({
 						product_id: item.product_id,
-						amount: Number(item.stock_info.amount)
+						amount: item.stock_info.amount
 					});
 				}
 			}
@@ -5385,10 +5425,10 @@ function onGameApp() {
 				const draconicProduct = eidolonshopRes.body.catalogs
 					.flatMap(catalog => catalog.products)
 					.find(product => product.product_id === 61011);
-				if (draconicProduct && Number(draconicProduct.stock_info.amount) > 0) {
+				if (draconicProduct && draconicProduct.stock_info.amount > 0) {
 					purchaseQueue.push({
 						product_id: draconicProduct.product_id,
-						amount: Number(draconicProduct.stock_info.amount)
+						amount: draconicProduct.stock_info.amount
 					});
 				}
 			}
@@ -5397,18 +5437,28 @@ function onGameApp() {
 				return;
 			}
 			for (const item of purchaseQueue) {
-				try {
-					await _httpClient.post({url: `${kh.env.urlRoot}/shop`, json: item}, "unblock");
-					debugLog(`Exchange successful for product ID: ${item.product_id}`);
-					await sleep(50);
-				} catch (error) {
-					debugLog(`Exchange failed for product ID: ${item.product_id}.`);
+				let keepPurchasing = true;
+				while (keepPurchasing) {
+					try {
+						const shopRes = await _httpClient.post({url: `${kh.env.urlRoot}/shop`, json: item}, "unblock");
+						if (shopRes?.body?.result === true) {
+							debugLog(`Exchange successful for product ID: ${item.product_id}`);
+							successCount++;
+						} else {
+							keepPurchasing = false;
+						}
+						await sleep(30);
+					} catch (error) {
+						//debugLog(`Exchange failed for product ID: ${item.product_id}.`);
+						keepPurchasing = false;
+					}
 				}
 			}
-			debugLog("autoPurchaseShopItems end");
+			debugLog(`autoPurchaseShopItems: ${successCount}`);
 		} catch (error) {
 			debugLog("autoPurchaseShopItems: " + error);
 		}
+		return successCount;
 	}
 	/**
 	 * @description 還原不需要的持有物品,將其轉為資源
