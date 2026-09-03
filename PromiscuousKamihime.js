@@ -645,8 +645,8 @@ function onGameFrame() {
 			const animationSpeedSelect = document.createElement("select");
 			animationSpeedSelect.setAttribute("style", selectStyle);
 			applySelectHoverEffect(animationSpeedSelect);
-			const animationSpeedOptions = [2.0, 3.2, 10.0, 40.0, 100.0];
-			const currentAnimationSpeed = GM_getValue("animationSpeedFactor", 2.0);
+			const animationSpeedOptions = [2.3, 3.2, 10.0, 40.0, 100.0];
+			const currentAnimationSpeed = GM_getValue("animationSpeedFactor", 2.3);
 			animationSpeedOptions.forEach(function(value) {
 				const opt = document.createElement("option"); opt.value = value; opt.text = value;
 				if (value === currentAnimationSpeed) opt.selected = true;
@@ -1652,7 +1652,7 @@ function onGameFrame() {
  * @description 遊戲頁面程式, 遊戲引擎為 cocos2d-js-v3.13.js
  */
 function onGameApp() {
-	let _animationSpeedFactor = GM_getValue("animationSpeedFactor", 2.0);//動畫加速
+	let _animationSpeedFactor = GM_getValue("animationSpeedFactor", 2.3);//動畫加速
 	let _animationDelay = GM_getValue("skipAnimationDelay", false);//取消動畫延遲
 	let _autoAttackEnabled = GM_getValue("isAutoAttackEnabled", false);//自動攻擊
 	let _isAutoDeployEnabled = GM_getValue("isAutoDeployEnabled", false);//自動選擇幻獸與隊伍進場
@@ -1745,11 +1745,6 @@ function onGameApp() {
 	let _battleStartTime = 0;//前一場戰鬥的啟動時間,避免連續點擊加入戰鬥
 	const _imageCollector = false;//要抓遊戲裡的圖才打開,避免拖累遊戲
 	const _interceptedImageUrls = new Set();//記錄攔截到的圖片網址
-
-	//原動畫延遲速度保留用
-	let _originalGetPromiseToDelayAnimation = null;
-	let _originalCharacterSpeed = null;
-	let _originalEnemySpeed = null;
 	/** 
 	 * @description 延遲
 	 * @param {number} ms - 毫秒
@@ -1855,8 +1850,7 @@ function onGameApp() {
 				applyAnimationSpeed();//動畫加速
 			});
 			GM_addValueChangeListener("skipAnimationDelay", function(key, oldValue, newValue, remote) {
-				_animationDelay = newValue;
-				setAnimationDelay();//動畫延遲
+				_animationDelay = newValue;//取消動畫延遲
 			});
 			GM_addValueChangeListener("isAutoAttackEnabled", function(key, oldValue, newValue, remote) {
 				_autoAttackEnabled = newValue;//戰鬥開始自動攻擊
@@ -2105,34 +2099,58 @@ function onGameApp() {
 			}
 			//初始化 HTTP 連接
 			if (!_httpClient) {_httpClient = kh.createInstance("HttpConnection");}
-			//降低動畫延遲
-			kh.Summon.prototype.FADE_SPEED = 0.05;//default 0.3
-			kh.CHARACTER_PANEL_BAR_ANIMATION_DURATION = 0.05;//default 0.1
-			kh.ENEMY_STATUS_BAR_ANIMATION_DURATION = 0.01;//default 0.08
-			kh.AVATAR_DIE_FADEOUT_DELAY_TIME = 0.05;//default 0.5
-			kh.StageProgress.prototype.ANIMATION_START_DELAY = 0.05;//default 0.2
-			kh.StageProgress.prototype.FADE_IN_SPEED = 0.05;//default 0.5
-			kh.StageProgress.prototype.FADE_OUT_SPEED = 0.05;//default 0.5
+			//降低延遲
+			const summonFadeSpeed = 0.2;//default 0.3 sec
+			debugLog(`Summon.FADE_SPEED: ${kh.Summon.prototype.FADE_SPEED} -> ${summonFadeSpeed}`);
+			kh.Summon.prototype.FADE_SPEED = summonFadeSpeed
+			//降低延遲
+			const characterPanelBarAnimationDuration = 0.1;//default 0.1 sec
+			debugLog(`CHARACTER_PANEL_BAR_ANIMATION_DURATION: ${kh.CHARACTER_PANEL_BAR_ANIMATION_DURATION} -> ${characterPanelBarAnimationDuration}`);
+			kh.CHARACTER_PANEL_BAR_ANIMATION_DURATION = characterPanelBarAnimationDuration;
+			//降低延遲
+			const enemyStatusBarAnimationDuration = 0.08;//default 0.08 sec
+			debugLog(`ENEMY_STATUS_BAR_ANIMATION_DURATION: ${kh.ENEMY_STATUS_BAR_ANIMATION_DURATION} -> ${enemyStatusBarAnimationDuration}`);
+			kh.ENEMY_STATUS_BAR_ANIMATION_DURATION = enemyStatusBarAnimationDuration
+			//降低延遲
+			const avatarDieFadeoutDelayTime = 0.4;//default 0.5 sec
+			debugLog(`AVATAR_DIE_FADEOUT_DELAY_TIME: ${kh.AVATAR_DIE_FADEOUT_DELAY_TIME} -> ${avatarDieFadeoutDelayTime}`);
+			kh.AVATAR_DIE_FADEOUT_DELAY_TIME = avatarDieFadeoutDelayTime;
+			//降低延遲
+			const StageProgressAnimationStartDelay = 0.1;//default 0.2 sec
+			debugLog(`StageProgress.ANIMATION_START_DELAY: ${kh.StageProgress.prototype.ANIMATION_START_DELAY} -> ${StageProgressAnimationStartDelay}`);
+			kh.StageProgress.prototype.ANIMATION_START_DELAY = StageProgressAnimationStartDelay;
+			//降低延遲
+			const StageProgressFadeInSpeed = 0.2;//default 0.5 sec
+			debugLog(`StageProgress.FADE_IN_SPEED: ${kh.StageProgress.prototype.FADE_IN_SPEED} -> ${StageProgressFadeInSpeed}`);
+			kh.StageProgress.prototype.FADE_IN_SPEED = StageProgressFadeInSpeed;
+			//降低延遲
+			const StageProgressFadeOutSpeed = 0.2;//default 0.5 sec
+			debugLog(`StageProgress.FADE_OUT_SPEED: ${kh.StageProgress.prototype.FADE_OUT_SPEED} -> ${StageProgressFadeOutSpeed}`);
+			kh.StageProgress.prototype.FADE_OUT_SPEED = StageProgressFadeOutSpeed;
 			await initAnimationAccelerator();
-			//攻擊動畫加速
+			//攻擊動畫加速,default 2.3,數字越大速度越快
+			debugLog(`PlayerGameConfig.BATTLE_SPEED_SETTINGS: ${kh.PlayerGameConfig.prototype.BATTLE_SPEED_SETTINGS.quick} -> ${_animationSpeedFactor}`);
 			kh.PlayerGameConfig.prototype.BATTLE_SPEED_SETTINGS.quick = _animationSpeedFactor;
-			debugLog('Animation Speed: ' + _animationSpeedFactor);
-			//戰鬥進場動畫延遲
-			if (!_originalGetPromiseToDelayAnimation) {
-				_originalGetPromiseToDelayAnimation = khutil.getPromiseToDelayAnimation;
-				_originalCharacterSpeed = kh.Character.prototype.ENTER_BATTLE_ANIMATION_SPEED;
-				_originalEnemySpeed = kh.Enemy.prototype.ENTER_BATTLE_ANIMATION_SPEED;
-			}
-			if (_animationDelay) {
-				//複寫動畫延遲 Promise。將原本傳入的延遲時間全部強制歸零 (0)
-				khutil.getPromiseToDelayAnimation = function (_, args) {
-					return _originalGetPromiseToDelayAnimation(0, args);
-				};
-				//將玩家與Boss的進場、登場動畫執行速度全部設為0
-				kh.Character.prototype.ENTER_BATTLE_ANIMATION_SPEED=0;
-				kh.Enemy.prototype.ENTER_BATTLE_ANIMATION_SPEED=0;
-			}
-			debugLog('Animation Delay: ' + _animationDelay);
+			//降低延遲
+			const characterEnterBattleAnimationSpeed = 0.3;//default 0.3 sec
+			debugLog(`Character.ENTER_BATTLE_ANIMATION_SPEED: ${kh.Character.prototype.ENTER_BATTLE_ANIMATION_SPEED} -> ${characterEnterBattleAnimationSpeed}`);
+			kh.Character.prototype.ENTER_BATTLE_ANIMATION_SPEED = characterEnterBattleAnimationSpeed;
+			//降低延遲
+			const enemyEnterBattleAnimationSpeed = 0.3;//default 0.3 sec
+			debugLog(`Enemy.ENTER_BATTLE_ANIMATION_SPEED: ${kh.Enemy.prototype.ENTER_BATTLE_ANIMATION_SPEED} -> ${enemyEnterBattleAnimationSpeed}`);
+			kh.Enemy.prototype.ENTER_BATTLE_ANIMATION_SPEED = enemyEnterBattleAnimationSpeed;
+			//取消動畫延遲
+			khutil.getPromiseToDelayAnimationRaw = khutil.getPromiseToDelayAnimation;
+			khutil.getPromiseToDelayAnimation = function(delayMs, resolveValue) {
+				if (typeof delayMs === 'undefined') delayMs = 1000;
+				if (delayMs <= 0 || _animationDelay) return Promise.resolve(resolveValue);
+				return new Promise(function(resolve) {
+					const delaySeconds = delayMs / 1000;
+					cc.director.getRunningScene().scheduleOnce(function() {
+						resolve(resolveValue);
+					}, delaySeconds);
+				});
+			};
 			//彈窗攔截
 			await hookAllPopups();
 			//繼續設定
@@ -2422,11 +2440,6 @@ function onGameApp() {
 			//調整遊戲FPS
 			cc.game.setFrameRate(_cocosFps);
 			debugLog("fps: " + _cocosFps);
-			if (cc.macro) {
-				cc.macro.FPS = _cocosFps;
-			} else {
-				debugLog("no cc.macro");
-			}
 			//調整遊戲時間尺度
 			cc.director.getScheduler().setTimeScale(_cocosTimeScale);
 			debugLog("TimeScale: " + _cocosTimeScale);
@@ -2464,7 +2477,9 @@ function onGameApp() {
 				return result;
 			}
 			//進場動畫延遲時間
-			kh.BattleWorld.prototype.ENTER_BATTLE_ANIMATION_DELAY = 100;//預設600毫秒
+			const bwEnterBattleAnimationDelay = 100;//預設600毫秒
+			debugLog(`BattleWorld.ENTER_BATTLE_ANIMATION_DELAY: ${kh.BattleWorld.prototype.ENTER_BATTLE_ANIMATION_DELAY} -> ${bwEnterBattleAnimationDelay}`);
+			kh.BattleWorld.prototype.ENTER_BATTLE_ANIMATION_DELAY = bwEnterBattleAnimationDelay;
 			//攔截自己發送的戰鬥指令,檢測自動戰鬥中卡住的情況
 			const originalMethodUseAbility = kh.BattleWorld.prototype.useAbility;
 			kh.BattleWorld.prototype.useAbilityRaw = kh.BattleWorld.prototype.useAbility;
@@ -6078,10 +6093,18 @@ function onGameApp() {
 			}
 			debugLog("hime count: " + himeList.length);
 			switch (_language) {
-				case 0:exportToJsonFile("HimeDataJP", JSON.stringify(himeList, null, 2));break;
-				case 1:exportToJsonFile("HimeDataCHT", JSON.stringify(himeList, null, 2));break;
-				case 2:exportToJsonFile("HimeDataEN", JSON.stringify(himeList, null, 2));break;
-				default:exportToJsonFile("HimeData", JSON.stringify(himeList, null, 2));break;
+				case 0:
+					exportToJsonFile("HimeDataJP", "HimeDataJP=" + JSON.stringify(himeList) + ";");
+					break;
+				case 1:
+					exportToJsonFile("HimeDataCHT", "HimeDataCHT=" + JSON.stringify(himeList) + ";");
+					break;
+				case 2:
+					exportToJsonFile("HimeDataEN", "HimeDataEN=" + JSON.stringify(himeList) + ";");
+					break;
+				default:
+					exportToJsonFile("HimeData", "HimeData=" + JSON.stringify(himeList) + ";");
+					break;
 			}
 		} catch (error) {
 			debugLog("exportAllHimeData: " + error);
@@ -6242,10 +6265,18 @@ function onGameApp() {
 			}
 			debugLog("weapons count: " + weaponList.length);
 			switch (_language) {
-				case 0:exportToJsonFile("WeaponDataJP", JSON.stringify(weaponList, null, 2));break;
-				case 1:exportToJsonFile("WeaponDataCHT", JSON.stringify(weaponList, null, 2));break;
-				case 2:exportToJsonFile("WeaponDataEN", JSON.stringify(weaponList, null, 2));break;
-				default:exportToJsonFile("WeaponData", JSON.stringify(weaponList, null, 2));break;
+				case 0:
+					exportToJsonFile("WeaponDataJP", "WeaponDataJP=" + JSON.stringify(weaponList) + ";");
+					break;
+				case 1:
+					exportToJsonFile("WeaponDataCHT", "WeaponDataCHT=" + JSON.stringify(weaponList) + ";");
+					break;
+				case 2:
+					exportToJsonFile("WeaponDataEN", "WeaponDataEN=" + JSON.stringify(weaponList) + ";");
+					break;
+				default:
+					exportToJsonFile("WeaponData", "WeaponData=" + JSON.stringify(weaponList) + ";");
+					break;
 			}
 		} catch(error) {
 			debugLog("exportAllWeaponData: " + error);
@@ -6420,10 +6451,18 @@ function onGameApp() {
 			}
 			debugLog("summon count: " + summonList.length);
 			switch (_language) {
-				case 0:exportToJsonFile("SummonDataJP", JSON.stringify(summonList, null, 2));break;
-				case 1:exportToJsonFile("SummonDataCHT", JSON.stringify(summonList, null, 2));break;
-				case 2:exportToJsonFile("SummonDataEN", JSON.stringify(summonList, null, 2));break;
-				default:exportToJsonFile("SummonData", JSON.stringify(summonList, null, 2));break;
+				case 0:
+					exportToJsonFile("SummonDataJP", "SummonDataJP=" + JSON.stringify(summonList) + ";");
+					break;
+				case 1:
+					exportToJsonFile("SummonDataCHT", "SummonDataCHT=" + JSON.stringify(summonList) + ";");
+					break;
+				case 2:
+					exportToJsonFile("SummonDataEN", "SummonDataEN=" + JSON.stringify(summonList) + ";");
+					break;
+				default:
+					exportToJsonFile("SummonData","SummonData=" + JSON.stringify(summonList) + ";");
+					break;
 			}
 
 		} catch(error) {
@@ -6530,10 +6569,18 @@ function onGameApp() {
 			}
 			debugLog("job count: " + jobList.length);
 			switch (_language) {
-				case 0:exportToJsonFile("SoulDataJP", JSON.stringify(jobList, null, 2));break;
-				case 1:exportToJsonFile("SoulDataCHT", JSON.stringify(jobList, null, 2));break;
-				case 2:exportToJsonFile("SoulDataEN", JSON.stringify(jobList, null, 2));break;
-				default:exportToJsonFile("SoulData", JSON.stringify(jobList, null, 2));break;
+				case 0:
+					exportToJsonFile("SoulDataJP", "SoulDataJP=" + JSON.stringify(jobList) + ";");
+					break;
+				case 1:
+					exportToJsonFile("SoulDataCHT", "SoulDataCHT=" + JSON.stringify(jobList) + ";");
+					break;
+				case 2:
+					exportToJsonFile("SoulDataEN", "SoulDataEN=" + JSON.stringify(jobList) + ";");
+					break;
+				default:
+					exportToJsonFile("SoulData", "SoulData=" + JSON.stringify(jobList) + ";");
+					break;
 			}
 		} catch(error) {
 			debugLog("exportAllSoulData: " + error);
@@ -6546,6 +6593,28 @@ function onGameApp() {
 			return {
 				job_id: source.job_id ?? "",//查詢用ID
 				name_cht: source.name ?? "",//名稱
+				weapon_favorite_1: source.proper_weapon?.[0] ?? "",//得意武器1
+				weapon_favorite_2: source.proper_weapon?.[1] ?? "",//得意武器2
+				burst_name_cht: source.burst.name ?? "",//burst名稱
+				burst_effect_cht: source.burst.description ?? "",//burst描述
+				ability_1_name_cht : source.abilities?.[0]?.name ?? "",//1技名稱
+				ability_1_effect_cht : source.abilities?.[0]?.description ?? "",//1技描述
+				ability_1_color : source.abilities?.[0]?.category ?? "",//1技顏色
+				ability_1_cooldown: source.abilities?.[0]?.recast ?? 0,//1技冷卻回合
+				ability_2_name_cht : source.abilities?.[1]?.name ?? "",//2技名稱
+				ability_2_effect_cht : source.abilities?.[1]?.description ?? "",//2技描述
+				ability_2_color : source.abilities?.[1]?.category ?? "",//2技顏色
+				ability_2_cooldown: source.abilities?.[1]?.recast ?? 0,//2技冷卻回合
+				ability_3_name_cht : source.abilities?.[2]?.name ?? "",//3技名稱
+				ability_3_effect_cht : source.abilities?.[2]?.description ?? "",//3技描述
+				ability_3_color : source.abilities?.[2]?.category ?? "",//3技顏色
+				ability_3_cooldown: source.abilities?.[2]?.recast ?? 0,//3技冷卻回合
+				assist_1_name_cht : source.assists?.[0]?.name ?? "",//被動1名稱
+				assist_1_effect_cht : source.assists?.[0]?.description ?? "",//被動1說明
+				assist_2_name_cht : source.assists?.[1]?.name ?? "",//被動2名稱
+				assist_2_effect_cht : source.assists?.[1]?.description ?? "",//被動2說明
+				assist_3_name_cht : source.assists?.[2]?.name ?? "",//被動3名稱
+				assist_3_effect_cht : source.assists?.[2]?.description ?? ""//被動3說明
 			};
 		}
 		/**
@@ -6556,6 +6625,28 @@ function onGameApp() {
 			return {
 				job_id: source.job_id ?? "",//查詢用ID
 				name_en: source.name ?? "",//名稱
+				weapon_favorite_1: source.proper_weapon?.[0] ?? "",//得意武器1
+				weapon_favorite_2: source.proper_weapon?.[1] ?? "",//得意武器2
+				burst_name_en: source.burst.name ?? "",//burst名稱
+				burst_effect_en: source.burst.description ?? "",//burst描述
+				ability_1_name_en : source.abilities?.[0]?.name ?? "",//1技名稱
+				ability_1_effect_en : source.abilities?.[0]?.description ?? "",//1技描述
+				ability_1_color : source.abilities?.[0]?.category ?? "",//1技顏色
+				ability_1_cooldown: source.abilities?.[0]?.recast ?? 0,//1技冷卻回合
+				ability_2_name_en : source.abilities?.[1]?.name ?? "",//2技名稱
+				ability_2_effect_en : source.abilities?.[1]?.description ?? "",//2技描述
+				ability_2_color : source.abilities?.[1]?.category ?? "",//2技顏色
+				ability_2_cooldown: source.abilities?.[1]?.recast ?? 0,//2技冷卻回合
+				ability_3_name_en : source.abilities?.[2]?.name ?? "",//3技名稱
+				ability_3_effect_en : source.abilities?.[2]?.description ?? "",//3技描述
+				ability_3_color : source.abilities?.[2]?.category ?? "",//3技顏色
+				ability_3_cooldown: source.abilities?.[2]?.recast ?? 0,//3技冷卻回合
+				assist_1_name_en : source.assists?.[0]?.name ?? "",//被動1名稱
+				assist_1_effect_en : source.assists?.[0]?.description ?? "",//被動1說明
+				assist_2_name_en : source.assists?.[1]?.name ?? "",//被動2名稱
+				assist_2_effect_en : source.assists?.[1]?.description ?? "",//被動2說明
+				assist_3_name_en : source.assists?.[2]?.name ?? "",//被動3名稱
+				assist_3_effect_en : source.assists?.[2]?.description ?? ""//被動3說明
 			};
 		}
 		/**
@@ -6566,6 +6657,28 @@ function onGameApp() {
 			return {
 				job_id: source.job_id ?? "",//查詢用ID
 				name_jp: source.name ?? "",//名稱
+				weapon_favorite_1: source.proper_weapon?.[0] ?? "",//得意武器1
+				weapon_favorite_2: source.proper_weapon?.[1] ?? "",//得意武器2
+				burst_name_jp: source.burst.name ?? "",//burst名稱
+				burst_effect_jp: source.burst.description ?? "",//burst描述
+				ability_1_name_jp : source.abilities?.[0]?.name ?? "",//1技名稱
+				ability_1_effect_jp : source.abilities?.[0]?.description ?? "",//1技描述
+				ability_1_color : source.abilities?.[0]?.category ?? "",//1技顏色
+				ability_1_cooldown: source.abilities?.[0]?.recast ?? 0,//1技冷卻回合
+				ability_2_name_jp : source.abilities?.[1]?.name ?? "",//2技名稱
+				ability_2_effect_jp : source.abilities?.[1]?.description ?? "",//2技描述
+				ability_2_color : source.abilities?.[1]?.category ?? "",//2技顏色
+				ability_2_cooldown: source.abilities?.[1]?.recast ?? 0,//2技冷卻回合
+				ability_3_name_jp : source.abilities?.[2]?.name ?? "",//3技名稱
+				ability_3_effect_jp : source.abilities?.[2]?.description ?? "",//3技描述
+				ability_3_color : source.abilities?.[2]?.category ?? "",//3技顏色
+				ability_3_cooldown: source.abilities?.[2]?.recast ?? 0,//3技冷卻回合
+				assist_1_name_jp : source.assists?.[0]?.name ?? "",//被動1名稱
+				assist_1_effect_jp : source.assists?.[0]?.description ?? "",//被動1說明
+				assist_2_name_jp : source.assists?.[1]?.name ?? "",//被動2名稱
+				assist_2_effect_jp : source.assists?.[1]?.description ?? "",//被動2說明
+				assist_3_name_jp : source.assists?.[2]?.name ?? "",//被動3名稱
+				assist_3_effect_jp : source.assists?.[2]?.description ?? ""//被動3說明
 			};
 		}
 	}
@@ -6586,31 +6699,6 @@ function onGameApp() {
 			}
 		} catch(error) {
 			debugLog("applyAnimationSpeed: " + error);
-		}
-	}
-	/**
-	 * @description 修改戰鬥入場時的動畫演出時間
-	 */
-	function setAnimationDelay() {
-		try {
-			//檢查是否有備份資料
-			if (_originalGetPromiseToDelayAnimation === null) return;
-			if (typeof kh !== 'undefined' && typeof khutil !== 'undefined') {
-				if (_animationDelay) {
-					khutil.getPromiseToDelayAnimation = function (_, args) {
-						return _originalGetPromiseToDelayAnimation(0, args);
-					};
-					kh.Character.prototype.ENTER_BATTLE_ANIMATION_SPEED=0;
-					kh.Enemy.prototype.ENTER_BATTLE_ANIMATION_SPEED=0;
-				} else {
-					khutil.getPromiseToDelayAnimation = _originalGetPromiseToDelayAnimation;
-					kh.Character.prototype.ENTER_BATTLE_ANIMATION_SPEED = _originalCharacterSpeed;
-					kh.Enemy.prototype.ENTER_BATTLE_ANIMATION_SPEED = _originalEnemySpeed;
-				}
-				debugLog('Animation Delay: ' + _animationDelay);
-			}
-		} catch (error) {
-			debugLog("setAnimationDelay: " + error);
 		}
 	}
 	/**
@@ -7107,8 +7195,14 @@ function onGameApp() {
 				case "raid"://合作副本
 					if (_enemyLevel < 90) {
 						await setBattleAutoState(1);//綠自動
-					} else {
+					} else if (_enemyLevel < 160) {
 						await setBattleAutoState(2);//紅自動
+					} else {
+						if (_autoAttackEnabled) {
+							await setBattleAutoState(0);//自定義自動
+						} else {
+							await setBattleAutoState(2);//紅自動
+						}
 					}
 					break;
 				case "event_raid": //活動副本
@@ -7436,7 +7530,7 @@ function onGameApp() {
 		}
 		try {
 			//非戰鬥狀態退出
-			if (_currentSceneName !== "battle") {debugLog("battle quit, _currentSceneName mismatch");return;}
+			if (_currentSceneName !== "battle") {return;}
 			const currentScene = cc.director.getRunningScene();
 			if (typeof currentScene.sceneName !== "undefined") {debugLog("battle quit, scene transitioning");return;}
 			//注意,換階段時battleWorld是空的
@@ -7448,7 +7542,7 @@ function onGameApp() {
 				if (loopResult === "STOP_LOOP") return;
 			}
 			// Final Scene Checks
-			if (_currentSceneName !== "battle") {debugLog("battle quit, _currentSceneName mismatch");return;}
+			if (_currentSceneName !== "battle") {return;}
 			if (typeof cc.director.getRunningScene().sceneName !== "undefined") {debugLog("battle quit, scene transitioning");return;}
 		} catch(error) {
 			if (error.message === "EXECUTION_HANG_TIMEOUT") {
@@ -7721,6 +7815,12 @@ function onGameApp() {
 					return;
 				}
 			}
+			//檢查能否Full Burst
+			// if (isFullBurst()) {
+			// 	await setBattleBurstState(true);
+			// } else {
+			// 	await setBattleBurstState(false);
+			// }
 			//點擊攻擊按鍵
 			await battleWorld.battleUI.AttackButton.simulateAttack();
 		} catch(error) {
@@ -7849,6 +7949,24 @@ function onGameApp() {
 				debugLog("findAbilityTarget: " + error);
 				return -1;
 			}
+		}
+		/**
+		 * @description 判斷是否全隊能發動 Burst
+		 * @param {Array} characterList - 隊伍角色清單
+		 * @returns {Boolean} 是否達到 Full Burst 條件
+		 */
+		function isFullBurst(characterList) {
+			if (!characterList || characterList.length === 0) return false;
+			let burstMin = 100;
+			characterList.forEach((character, index) => {
+				if (character.hp > 0 && character.hpmax > 0) {
+					const avatarData = character._avatarData;
+					if (avatarData.is_burst_banned) return false;
+					if (character._avatarData.burst < burstMin) return false;
+					burstMin = burstMin - 10;
+				}
+			});
+			return true;
 		}
 		/**
 		 * @description 評估是否需要喝水
@@ -8288,6 +8406,7 @@ function onGameApp() {
 							await sleep(2000);
 						}
 					}
+					
 				}
 			}
 			if ((Date.now() - _battleStartTime) < 20000) return;
