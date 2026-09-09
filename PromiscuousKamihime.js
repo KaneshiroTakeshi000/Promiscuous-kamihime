@@ -2099,58 +2099,9 @@ function onGameApp() {
 			}
 			//初始化 HTTP 連接
 			if (!_httpClient) {_httpClient = kh.createInstance("HttpConnection");}
-			//降低延遲
-			const summonFadeSpeed = 0.2;//default 0.3 sec
-			debugLog(`Summon.FADE_SPEED: ${kh.Summon.prototype.FADE_SPEED} -> ${summonFadeSpeed}`);
-			kh.Summon.prototype.FADE_SPEED = summonFadeSpeed
-			//降低延遲
-			const characterPanelBarAnimationDuration = 0.1;//default 0.1 sec
-			debugLog(`CHARACTER_PANEL_BAR_ANIMATION_DURATION: ${kh.CHARACTER_PANEL_BAR_ANIMATION_DURATION} -> ${characterPanelBarAnimationDuration}`);
-			kh.CHARACTER_PANEL_BAR_ANIMATION_DURATION = characterPanelBarAnimationDuration;
-			//降低延遲
-			const enemyStatusBarAnimationDuration = 0.08;//default 0.08 sec
-			debugLog(`ENEMY_STATUS_BAR_ANIMATION_DURATION: ${kh.ENEMY_STATUS_BAR_ANIMATION_DURATION} -> ${enemyStatusBarAnimationDuration}`);
-			kh.ENEMY_STATUS_BAR_ANIMATION_DURATION = enemyStatusBarAnimationDuration
-			//降低延遲
-			const avatarDieFadeoutDelayTime = 0.4;//default 0.5 sec
-			debugLog(`AVATAR_DIE_FADEOUT_DELAY_TIME: ${kh.AVATAR_DIE_FADEOUT_DELAY_TIME} -> ${avatarDieFadeoutDelayTime}`);
-			kh.AVATAR_DIE_FADEOUT_DELAY_TIME = avatarDieFadeoutDelayTime;
-			//降低延遲
-			const StageProgressAnimationStartDelay = 0.1;//default 0.2 sec
-			debugLog(`StageProgress.ANIMATION_START_DELAY: ${kh.StageProgress.prototype.ANIMATION_START_DELAY} -> ${StageProgressAnimationStartDelay}`);
-			kh.StageProgress.prototype.ANIMATION_START_DELAY = StageProgressAnimationStartDelay;
-			//降低延遲
-			const StageProgressFadeInSpeed = 0.2;//default 0.5 sec
-			debugLog(`StageProgress.FADE_IN_SPEED: ${kh.StageProgress.prototype.FADE_IN_SPEED} -> ${StageProgressFadeInSpeed}`);
-			kh.StageProgress.prototype.FADE_IN_SPEED = StageProgressFadeInSpeed;
-			//降低延遲
-			const StageProgressFadeOutSpeed = 0.2;//default 0.5 sec
-			debugLog(`StageProgress.FADE_OUT_SPEED: ${kh.StageProgress.prototype.FADE_OUT_SPEED} -> ${StageProgressFadeOutSpeed}`);
-			kh.StageProgress.prototype.FADE_OUT_SPEED = StageProgressFadeOutSpeed;
-			await initAnimationAccelerator();
 			//攻擊動畫加速,default 2.3,數字越大速度越快
 			debugLog(`PlayerGameConfig.BATTLE_SPEED_SETTINGS: ${kh.PlayerGameConfig.prototype.BATTLE_SPEED_SETTINGS.quick} -> ${_animationSpeedFactor}`);
 			kh.PlayerGameConfig.prototype.BATTLE_SPEED_SETTINGS.quick = _animationSpeedFactor;
-			//降低延遲
-			const characterEnterBattleAnimationSpeed = 0.3;//default 0.3 sec
-			debugLog(`Character.ENTER_BATTLE_ANIMATION_SPEED: ${kh.Character.prototype.ENTER_BATTLE_ANIMATION_SPEED} -> ${characterEnterBattleAnimationSpeed}`);
-			kh.Character.prototype.ENTER_BATTLE_ANIMATION_SPEED = characterEnterBattleAnimationSpeed;
-			//降低延遲
-			const enemyEnterBattleAnimationSpeed = 0.3;//default 0.3 sec
-			debugLog(`Enemy.ENTER_BATTLE_ANIMATION_SPEED: ${kh.Enemy.prototype.ENTER_BATTLE_ANIMATION_SPEED} -> ${enemyEnterBattleAnimationSpeed}`);
-			kh.Enemy.prototype.ENTER_BATTLE_ANIMATION_SPEED = enemyEnterBattleAnimationSpeed;
-			//取消動畫延遲
-			khutil.getPromiseToDelayAnimationRaw = khutil.getPromiseToDelayAnimation;
-			khutil.getPromiseToDelayAnimation = function(delayMs, resolveValue) {
-				if (typeof delayMs === 'undefined') delayMs = 1000;
-				if (delayMs <= 0 || _animationDelay) return Promise.resolve(resolveValue);
-				return new Promise(function(resolve) {
-					const delaySeconds = delayMs / 1000;
-					cc.director.getRunningScene().scheduleOnce(function() {
-						resolve(resolveValue);
-					}, delaySeconds);
-				});
-			};
 			//彈窗攔截
 			await hookAllPopups();
 			//繼續設定
@@ -2158,57 +2109,6 @@ function onGameApp() {
 			debugLog('initialization part2 starting...');
 		} catch(error) {
 			debugLog("initNetworkHooks: " + error);
-		}
-	}
-	/**
-	 * @description 加速遊戲強化與突破的動畫
-	 */
-	async function initAnimationAccelerator() {
-		try {
-			for (const moduleName in kh.pc.enh_evo) {
-				//只取強化/突破模組
-				const isTargetModule = /^(enh|evo)_\d+/.test(moduleName);
-				if (!isTargetModule) continue;
-				//檢查原型物件
-				const targetPrototype = kh.pc.enh_evo[moduleName]?.SceneDelegate?.prototype;
-				if (!targetPrototype) continue;
-				await overrideAnimationDelays(targetPrototype, moduleName);
-			}
-		} catch(error) {
-			debugLog("initAnimationAccelerator: " + error);
-		}
-	}
-	/**
-	 * @description 抽離出的輔助函式：負責攔截目標原型並修改延遲參數
-	 * @param {Object} targetPrototype - 目標模組的 SceneDelegate 原型物件
-	 * @param {String} moduleName - 模組名稱
-	 */
-	async function overrideAnimationDelays(targetPrototype, moduleName) {
-		try {
-			const delayMs = 50;//50ms
-			//攔截計算動畫播放時間
-			if (targetPrototype._calcSpendMillisec) {
-				const originalCalcSpend = targetPrototype._calcSpendMillisec;
-				targetPrototype._calcSpendMillisec = function (...args) {
-					return delayMs;
-				};
-			}
-			//攔截突破動畫播放
-			if (targetPrototype._playEvoAnimations) {
-				const originalPlayEvo = targetPrototype._playEvoAnimations;
-				targetPrototype._playEvoAnimations = function (...args) {
-					args[6] = delayMs;return originalPlayEvo.apply(this, args);
-				};
-			}
-			//攔截強化動畫播放
-			if (targetPrototype._playEnhAnimations) {
-				const originalPlayEnh = targetPrototype._playEnhAnimations;
-				targetPrototype._playEnhAnimations = function (...args) {
-					args[6] = delayMs;return originalPlayEnh.apply(this, args);
-				};
-			}
-		} catch(error) {
-			debugLog("overrideAnimationDelays(" + moduleName + ")"+ error);
 		}
 	}
 	/**
@@ -2476,10 +2376,6 @@ function onGameApp() {
 				sendTurnText(`(${_currentStage}/${_maxStage}),${t+1}`);
 				return result;
 			}
-			//進場動畫延遲時間
-			const bwEnterBattleAnimationDelay = 100;//預設600毫秒
-			debugLog(`BattleWorld.ENTER_BATTLE_ANIMATION_DELAY: ${kh.BattleWorld.prototype.ENTER_BATTLE_ANIMATION_DELAY} -> ${bwEnterBattleAnimationDelay}`);
-			kh.BattleWorld.prototype.ENTER_BATTLE_ANIMATION_DELAY = bwEnterBattleAnimationDelay;
 			//攔截自己發送的戰鬥指令,檢測自動戰鬥中卡住的情況
 			const originalMethodUseAbility = kh.BattleWorld.prototype.useAbility;
 			kh.BattleWorld.prototype.useAbilityRaw = kh.BattleWorld.prototype.useAbility;
@@ -2643,17 +2539,70 @@ function onGameApp() {
 				loggerPrototype.reportWidgetUserOperationRaw = loggerPrototype.reportWidgetUserOperation;
 				loggerPrototype.reportWidgetUserOperation = function(actionType, widgetNode) {};
 			}
-			setTimeout(initCache, 1200);
+			setTimeout(initCacheAndDelay, 1200);
 			debugLog('initialization part4 starting...');
 		} catch(error) {
 			debugLog("initBattleObservers: " + error);
 		}
 	}
 	/**
-	 * @description 初始化步驟, 取得遊戲數據快取
+	 * @description 初始化步驟, 取得遊戲數據快取與降低演出延遲
 	*/
-	async function initCache() {
+	async function initCacheAndDelay() {
 		try {
+			//降低幻獸出場動畫的淡入/淡出時間
+			const summonFadeSpeed = 0.1;//default 0.3 sec
+			debugLog(`Summon.FADE_SPEED: ${kh.Summon.prototype.FADE_SPEED} -> ${summonFadeSpeed}`);
+			kh.Summon.prototype.FADE_SPEED = summonFadeSpeed
+			//降低角色面板狀態條的動畫播放速度
+			const characterPanelBarAnimationDuration = 0.1;//default 0.1 sec
+			debugLog(`CHARACTER_PANEL_BAR_ANIMATION_DURATION: ${kh.CHARACTER_PANEL_BAR_ANIMATION_DURATION} -> ${characterPanelBarAnimationDuration}`);
+			kh.CHARACTER_PANEL_BAR_ANIMATION_DURATION = characterPanelBarAnimationDuration;
+			//降低敵人血條/狀態條的動畫播放速度
+			const enemyStatusBarAnimationDuration = 0.08;//default 0.08 sec
+			debugLog(`ENEMY_STATUS_BAR_ANIMATION_DURATION: ${kh.ENEMY_STATUS_BAR_ANIMATION_DURATION} -> ${enemyStatusBarAnimationDuration}`);
+			kh.ENEMY_STATUS_BAR_ANIMATION_DURATION = enemyStatusBarAnimationDuration
+			//降低角色死亡時，淡出時間
+			const avatarDieFadeoutDelayTime = 0.1;//default 0.5 sec
+			debugLog(`AVATAR_DIE_FADEOUT_DELAY_TIME: ${kh.AVATAR_DIE_FADEOUT_DELAY_TIME} -> ${avatarDieFadeoutDelayTime}`);
+			kh.AVATAR_DIE_FADEOUT_DELAY_TIME = avatarDieFadeoutDelayTime;
+			//降低關卡進度條動畫開始前的延遲
+			const StageProgressAnimationStartDelay = 0.1;//default 0.2 sec
+			debugLog(`StageProgress.ANIMATION_START_DELAY: ${kh.StageProgress.prototype.ANIMATION_START_DELAY} -> ${StageProgressAnimationStartDelay}`);
+			kh.StageProgress.prototype.ANIMATION_START_DELAY = StageProgressAnimationStartDelay;
+			//降低關卡進度條的淡入延遲
+			const StageProgressFadeInSpeed = 0.1;//default 0.5 sec
+			debugLog(`StageProgress.FADE_IN_SPEED: ${kh.StageProgress.prototype.FADE_IN_SPEED} -> ${StageProgressFadeInSpeed}`);
+			kh.StageProgress.prototype.FADE_IN_SPEED = StageProgressFadeInSpeed;
+			//降低關卡進度條的淡出延遲
+			const StageProgressFadeOutSpeed = 0.1;//default 0.5 sec
+			debugLog(`StageProgress.FADE_OUT_SPEED: ${kh.StageProgress.prototype.FADE_OUT_SPEED} -> ${StageProgressFadeOutSpeed}`);
+			kh.StageProgress.prototype.FADE_OUT_SPEED = StageProgressFadeOutSpeed;
+			await initAnimationAccelerator();
+			//降低我方角色進入戰鬥場景時的延遲
+			const characterEnterBattleAnimationSpeed = 0.1;//default 0.3 sec
+			debugLog(`Character.ENTER_BATTLE_ANIMATION_SPEED: ${kh.Character.prototype.ENTER_BATTLE_ANIMATION_SPEED} -> ${characterEnterBattleAnimationSpeed}`);
+			kh.Character.prototype.ENTER_BATTLE_ANIMATION_SPEED = characterEnterBattleAnimationSpeed;
+			//降低敵方角色進入戰鬥場景時的延遲
+			const enemyEnterBattleAnimationSpeed = 0.1;//default 0.3 sec
+			debugLog(`Enemy.ENTER_BATTLE_ANIMATION_SPEED: ${kh.Enemy.prototype.ENTER_BATTLE_ANIMATION_SPEED} -> ${enemyEnterBattleAnimationSpeed}`);
+			kh.Enemy.prototype.ENTER_BATTLE_ANIMATION_SPEED = enemyEnterBattleAnimationSpeed;
+			//取消各種動畫延遲
+			khutil.getPromiseToDelayAnimationRaw = khutil.getPromiseToDelayAnimation;
+			khutil.getPromiseToDelayAnimation = function(delayMs, resolveValue) {
+				if (typeof delayMs === 'undefined') delayMs = 1000;
+				if (delayMs <= 0 || _animationDelay) return Promise.resolve(resolveValue);
+				return new Promise(function(resolve) {
+					const delaySeconds = delayMs / 1000;
+					cc.director.getRunningScene().scheduleOnce(function() {
+						resolve(resolveValue);
+					}, delaySeconds);
+				});
+			};
+			//進場動畫延遲時間
+			const bwEnterBattleAnimationDelay = 100;//預設600毫秒
+			debugLog(`BattleWorld.ENTER_BATTLE_ANIMATION_DELAY: ${kh.BattleWorld.prototype.ENTER_BATTLE_ANIMATION_DELAY} -> ${bwEnterBattleAnimationDelay}`);
+			kh.BattleWorld.prototype.ENTER_BATTLE_ANIMATION_DELAY = bwEnterBattleAnimationDelay;
 			//取得玩家ID
 			const apiPlayers = kh.createInstance("apiAPlayers");
 			if (apiPlayers) {
@@ -2680,7 +2629,58 @@ function onGameApp() {
 				await simulateTouch(cc.director._runningScene.seekWidgetByName("btn_ok"));
 			}
 		} catch(error) {
-			debugLog("initCache: " + error);
+			debugLog("initCacheAndDelay: " + error);
+		}
+	}
+	/**
+	 * @description 取消遊戲強化與突破的延遲
+	 */
+	async function initAnimationAccelerator() {
+		try {
+			for (const moduleName in kh.pc.enh_evo) {
+				//只取強化/突破模組
+				const isTargetModule = /^(enh|evo)_\d+/.test(moduleName);
+				if (!isTargetModule) continue;
+				//檢查原型物件
+				const targetPrototype = kh.pc.enh_evo[moduleName]?.SceneDelegate?.prototype;
+				if (!targetPrototype) continue;
+				await overrideAnimationDelays(targetPrototype, moduleName);
+			}
+		} catch(error) {
+			debugLog("initAnimationAccelerator: " + error);
+		}
+	}
+	/**
+	 * @description 抽離出的輔助函式：負責攔截目標原型並修改延遲參數
+	 * @param {Object} targetPrototype - 目標模組的 SceneDelegate 原型物件
+	 * @param {String} moduleName - 模組名稱
+	 */
+	async function overrideAnimationDelays(targetPrototype, moduleName) {
+		try {
+			const delayMs = 50;//50ms
+			//攔截計算動畫播放時間
+			if (targetPrototype._calcSpendMillisec) {
+				const originalCalcSpend = targetPrototype._calcSpendMillisec;
+				targetPrototype._calcSpendMillisec = function (...args) {
+					return delayMs;
+				};
+			}
+			//攔截突破動畫播放
+			if (targetPrototype._playEvoAnimations) {
+				const originalPlayEvo = targetPrototype._playEvoAnimations;
+				targetPrototype._playEvoAnimations = function (...args) {
+					args[6] = delayMs;return originalPlayEvo.apply(this, args);
+				};
+			}
+			//攔截強化動畫播放
+			if (targetPrototype._playEnhAnimations) {
+				const originalPlayEnh = targetPrototype._playEnhAnimations;
+				targetPrototype._playEnhAnimations = function (...args) {
+					args[6] = delayMs;return originalPlayEnh.apply(this, args);
+				};
+			}
+		} catch(error) {
+			debugLog("overrideAnimationDelays(" + moduleName + ")"+ error);
 		}
 	}
 	/**
@@ -3821,10 +3821,11 @@ function onGameApp() {
 			}
 			//進入幻獸點關卡
 			if (await launchRaidBattle(currentQuest)) {
-				return false;
+				//return false;
 			} else {
 				debugLog("launch fail, give up");
 			}
+			return false;
 		} catch (error) {
 			debugLog("robotSummonPointStart: " + error);
 		}
@@ -3896,11 +3897,11 @@ function onGameApp() {
 			}
 			//進入關卡
 			if (await launchRaidBattle(currentQuest)) {
-				return false;
+				//return false;
 			} else {
 				debugLog("launch fail, give up");
-				return true;
 			}
+			return false;
 		} catch (error) {
 			debugLog("robotRaidEventTrigger: " + error);
 		}
@@ -3960,11 +3961,11 @@ function onGameApp() {
 				}
 				//進入幻獸點關卡
 				if (await launchRaidBattle(currentQuest)) {
-					return false;
+					//return false;
 				} else {
 					debugLog("launch fail, give up");
-					return true;
 				}
+				return false;
 			}
 		} catch (error) {
 			debugLog("robotFreeManTrigger: " + error);
@@ -4001,142 +4002,8 @@ function onGameApp() {
 			await executeFreeGacha();
 			//每日試運3連
 			await executeLuckGacha();
-			//清空狀態與任務
-			_dailyQuests.length = 0;
-			const missionApi = kh.createInstance("apiAMissions");
-			let elementQuestCount = 0;
-			let materialQuestCount = 0;
-			let accessoryQuestCount = 0;
-			//檢查每日任務
-			const dailyRes = await missionApi.getDaily();
-			const dailyMissions = dailyRes?.body?.missions || [];
-			for (const item of dailyMissions) {
-				if (item.clear) continue;
-				switch (item.mission_id) {
-					case 462:
-						debugLog("add the element mission.");
-						elementQuestCount += (item.max_progress - item.now_progress);
-						break;
-					case 469:
-						debugLog("add the material mission.");
-						materialQuestCount += (item.max_progress - item.now_progress);
-						break;
-					case 464:
-						debugLog("add the accessory mission.");
-						accessoryQuestCount += (item.max_progress - item.now_progress);
-						break;
-				}
-			}
-			//檢查每周任務
-			const weeklyRes = await missionApi.getWeekly();
-			const weeklyMissions = weeklyRes?.body?.missions || [];
-			for (const item of weeklyMissions) {
-				if (item.clear) continue;
-				switch (item.mission_id) {
-					case 482:
-						//(item.max_progress - item.now_progress - elementQuestCount) > 0
-						elementQuestCount += 9;
-						break;
-					case 488:
-						//(item.max_progress - item.now_progress - elementQuestCount) > 0
-						materialQuestCount += 12;
-						break;
-				}
-			}
-			if (elementQuestCount > 0) {
-				//加入屬性任務
-				const elementPrevInfo = await getQuestPrevious(_dailyElementQuestId, "daily");
-				for (let i = 0; i < elementQuestCount; i++) {
-					_dailyQuests.push({
-						url: `${kh.env.urlRoot}/a_quests/${_dailyElementQuestId}/start`,
-						json: {
-							type: "daily",
-							a_party_id: elementPrevInfo.prevPartyId,
-							support_a_summon_id: 0,
-							support_summon_tab_element_type: elementPrevInfo.prevSummonElement,
-							episode_num: 1
-						}
-					});
-				}
-			}
-			if (materialQuestCount > 0) {
-				//加入素材任務
-				const materialPrevInfo = await getQuestPrevious(_dailyMaterialQuestId, "daily");
-				for (let i = 0; i < materialQuestCount; i++) {
-					_dailyQuests.push({
-						url: `${kh.env.urlRoot}/a_quests/${_dailyMaterialQuestId}/start`,
-						json: {
-							type: "daily",
-							a_party_id: materialPrevInfo.prevPartyId,
-							support_a_summon_id: 0,
-							support_summon_tab_element_type: materialPrevInfo.prevSummonElement,
-							episode_num: 1
-						}
-					});
-				}
-			}
-			if (accessoryQuestCount > 0) {
-				//加入飾品任務
-				const accessoryPrevInfo = await getQuestPrevious(_dailyAccessoryQuestId, "accessory");
-				for (let i = 0; i < accessoryQuestCount; i++) {
-					_dailyQuests.push({
-						url: `${kh.env.urlRoot}/a_quests/${_dailyAccessoryQuestId}/start`,
-						json: {
-							type: "accessory",
-							a_party_id: accessoryPrevInfo.prevPartyId,
-							support_a_summon_id: 0,
-							support_summon_tab_element_type: accessoryPrevInfo.prevSummonElement,
-							episode_num: 1
-						}
-					});
-				}
-			}
-			//加入RAID關卡
-			const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_quests`, json: {type: "raid"}}, "unblock");
-			const questLists = raidRes?.body?.raid_quest_lists
-			if (questLists) {
-				const questList = [];
-				for (const key in questLists) {
-					const group = questLists[key];
-					if (!group || !Array.isArray(group.data)) continue;
-					for (const item of group.data) {
-						const enemyLevel = item.raid_info?.enemy_level;
-						if (!enemyLevel || enemyLevel <= 0) continue;//已不使用的關卡
-						if (enemyLevel >= _dailyQuestLevelMax) continue;//太高不單吃
-						if (item.is_new) continue;//未開通的關卡
-						const challengeCount = item.limit_info?.remaining_challenge_count;
-						if (!challengeCount || challengeCount < 1) continue;//已完成的關卡
-						//取得歷史隊伍與幻獸屬性
-						const { prevPartyId, prevSummonElement } = await getQuestPrevious(item.quest_id, "raid");
-						for (let i = 0; i < challengeCount; i++) {
-							questList.push({
-								quest_id: item.quest_id,
-								a_quest_id: item.a_quest_id,
-								enemy_name: item.raid_info?.enemy_name,
-								enemy_level: enemyLevel,
-								previous_party_id: prevPartyId,
-								previous_summon_element: prevSummonElement
-							});
-						}
-					}
-				}
-				//依敵人等級從低到高排序
-				questList.sort((a, b) => a.enemy_level - b.enemy_level);
-				//加入任務
-				for (const quest of questList) {
-					_dailyQuests.push({
-						url: `${kh.env.urlRoot}/a_quests/${quest.quest_id}/start`,
-						json: {
-							type: "raid",
-							a_party_id: quest.previous_party_id,
-							support_a_summon_id: 0,
-							support_summon_tab_element_type: quest.previous_summon_element
-						}
-					});
-				}
-			}
-			//檢查AP
-			await refillApBpIfNeeded();
+			//檢查戰鬥任務
+			await refreshDailyQuests();
 			//開始執行任務
 			debugLog("mission count: " + _dailyQuests.length);
 			while (_dailyQuests.length > 0) {
@@ -4146,16 +4013,16 @@ function onGameApp() {
 				const supportSummonId = await getSupportSummonId(currentQuest.json.support_summon_tab_element_type);
 				if (!supportSummonId) {
 					debugLog("no summon, give up");
-					continue;//放棄任務
+					_dailyQuests = [];
+					return true;//放棄任務
 				}
 				currentQuest.json.support_a_summon_id = supportSummonId;
 				if (await launchRaidBattle(currentQuest)) {
 					debugLog("mission start");
-					break;//啟動成功跳出
 				} else {
 					debugLog("launch fail, give up");
-					continue;
 				}
+				break;
 			}
 			if (_dailyQuests.length === 0) {
 				debugLog("the daily robot is asleep");
@@ -4184,20 +4051,161 @@ function onGameApp() {
 				//開啟關卡
 				currentQuest.json.support_a_summon_id = supportSummonId;
 				if (await launchRaidBattle(currentQuest)) {
-					return false;
+					//return false;
 				} else {
 					debugLog("launch fail, give up");
-					continue;
 				}
+				return false;
 			}
 			if (_dailyQuests.length === 0) {
-				debugLog("the daily robot is asleep");
-				sendRobotStrike();
+				//再檢查一次
+				await refreshDailyQuests();
+				if (_dailyQuests.length === 0) {
+					debugLog("the daily robot is asleep");
+					sendRobotStrike();
+				}
 			}
 		} catch (error) {
 			debugLog("robotDailyQuestResult: " + error);
 		}
 		return true;
+	}
+	/**
+	 * @description 檢查並建立每日/每週/RAID任務佇列
+	 */
+	async function refreshDailyQuests() {
+		_dailyQuests.length = 0; // 清空目前的任務佇列
+		const missionApi = kh.createInstance("apiAMissions");
+		let elementQuestCount = 0;
+		let materialQuestCount = 0;
+		let accessoryQuestCount = 0;
+
+		// 檢查每日任務
+		const dailyRes = await missionApi.getDaily();
+		const dailyMissions = dailyRes?.body?.missions || [];
+		for (const item of dailyMissions) {
+			if (item.clear) continue;
+			switch (item.mission_id) {
+				case 462:
+					debugLog("add the element mission.");
+					elementQuestCount += (item.max_progress - item.now_progress);
+					break;
+				case 469:
+					debugLog("add the material mission.");
+					materialQuestCount += (item.max_progress - item.now_progress);
+					break;
+				case 464:
+					debugLog("add the accessory mission.");
+					accessoryQuestCount += (item.max_progress - item.now_progress);
+					break;
+			}
+		}
+		// 檢查每周任務
+		const weeklyRes = await missionApi.getWeekly();
+		const weeklyMissions = weeklyRes?.body?.missions || [];
+		for (const item of weeklyMissions) {
+			if (item.clear) continue;
+			switch (item.mission_id) {
+				case 482:
+					elementQuestCount += 9;
+					break;
+				case 488:
+					materialQuestCount += 12;
+					break;
+			}
+		}
+		// 加入屬性任務
+		if (elementQuestCount > 0) {
+			const elementPrevInfo = await getQuestPrevious(_dailyElementQuestId, "daily");
+			for (let i = 0; i < elementQuestCount; i++) {
+				_dailyQuests.push({
+					url: `${kh.env.urlRoot}/a_quests/${_dailyElementQuestId}/start`,
+					json: {
+						type: "daily",
+						a_party_id: elementPrevInfo.prevPartyId,
+						support_a_summon_id: 0,
+						support_summon_tab_element_type: elementPrevInfo.prevSummonElement,
+						episode_num: 1
+					}
+				});
+			}
+		}
+		// 加入素材任務
+		if (materialQuestCount > 0) {
+			const materialPrevInfo = await getQuestPrevious(_dailyMaterialQuestId, "daily");
+			for (let i = 0; i < materialQuestCount; i++) {
+				_dailyQuests.push({
+					url: `${kh.env.urlRoot}/a_quests/${_dailyMaterialQuestId}/start`,
+					json: {
+						type: "daily",
+						a_party_id: materialPrevInfo.prevPartyId,
+						support_a_summon_id: 0,
+						support_summon_tab_element_type: materialPrevInfo.prevSummonElement,
+						episode_num: 1
+					}
+				});
+			}
+		}
+		// 加入飾品任務
+		if (accessoryQuestCount > 0) {
+			const accessoryPrevInfo = await getQuestPrevious(_dailyAccessoryQuestId, "accessory");
+			for (let i = 0; i < accessoryQuestCount; i++) {
+				_dailyQuests.push({
+					url: `${kh.env.urlRoot}/a_quests/${_dailyAccessoryQuestId}/start`,
+					json: {
+						type: "accessory",
+						a_party_id: accessoryPrevInfo.prevPartyId,
+						support_a_summon_id: 0,
+						support_summon_tab_element_type: accessoryPrevInfo.prevSummonElement,
+						episode_num: 1
+					}
+				});
+			}
+		}
+		// 加入RAID關卡
+		const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_quests`, json: {type: "raid"}}, "unblock");
+		const questLists = raidRes?.body?.raid_quest_lists;
+		if (questLists) {
+			const questList = [];
+			for (const key in questLists) {
+				const group = questLists[key];
+				if (!group || !Array.isArray(group.data)) continue;
+				for (const item of group.data) {
+					const enemyLevel = item.raid_info?.enemy_level;
+					if (!enemyLevel || enemyLevel <= 0) continue;
+					if (enemyLevel >= _dailyQuestLevelMax) continue;
+					if (item.is_new) continue;
+					const challengeCount = item.limit_info?.remaining_challenge_count;
+					if (!challengeCount || challengeCount < 1) continue;
+					
+					const { prevPartyId, prevSummonElement } = await getQuestPrevious(item.quest_id, "raid");
+					for (let i = 0; i < challengeCount; i++) {
+						questList.push({
+							quest_id: item.quest_id,
+							a_quest_id: item.a_quest_id,
+							enemy_name: item.raid_info?.enemy_name,
+							enemy_level: enemyLevel,
+							previous_party_id: prevPartyId,
+							previous_summon_element: prevSummonElement
+						});
+					}
+				}
+			}
+			questList.sort((a, b) => a.enemy_level - b.enemy_level);
+			for (const quest of questList) {
+				_dailyQuests.push({
+					url: `${kh.env.urlRoot}/a_quests/${quest.quest_id}/start`,
+					json: {
+						type: "raid",
+						a_party_id: quest.previous_party_id,
+						support_a_summon_id: 0,
+						support_summon_tab_element_type: quest.previous_summon_element
+					}
+				});
+			}
+		}
+		// 重新檢查任務後，可能需要補充 AP/BP
+		await refillApBpIfNeeded();
 	}
 	/**
 	 * @description 煉獄蘿蔔，查詢活動資訊後執行戰鬥
@@ -4827,6 +4835,7 @@ function onGameApp() {
 				case "has_quest_in_progress":
 					debugLog("has quest in progress");
 					//讓繼續戰鬥視窗跳出並點擊
+					await sleep(100);
 					await kh.createInstance("router").navigate("quest/q_001");
 					break;
 				case "has_unconfirmed_battle":
@@ -7758,7 +7767,32 @@ function onGameApp() {
 					} else {
 						//有特殊優先級的角色先套用
 						const charCustomPriority = CHARACTER_SKILL_PRIORITIES[characterId]?.[skillIdx];
-						if (charCustomPriority !== undefined) calculatedPriority = charCustomPriority;
+						if (charCustomPriority !== undefined) {
+							calculatedPriority = charCustomPriority;
+							//當持有減CT技(個人)
+							if (charCustomPriority === 70 || charCustomPriority === 71) {
+								let hasHigherPriorityReadySkills = false;
+								//檢查該角色的其他技能
+								for (const otherSkill of skills) {
+									if (otherSkill._index === skillIdx) continue;
+									//技能的優先級數值
+									const otherColor = otherSkill._abilityData?.color || "unknown";
+									let otherPriority = SKILL_COLOR_PRIORITIES[otherColor] || 99;
+									const otherCustomPriority = CHARACTER_SKILL_PRIORITIES[characterId]?.[otherSkill._index];
+									if (otherCustomPriority !== undefined) otherPriority = otherCustomPriority;
+									//檢查小於此減CT技的優先級,當存在可用技能時不改變優先級
+									if (otherPriority < charCustomPriority) {
+										if (otherSkill._abilityData && otherSkill._abilityData.ready === true) {
+											hasHigherPriorityReadySkills = true;
+											break;
+										}
+									}
+								}
+								if (!hasHigherPriorityReadySkills) {
+									calculatedPriority = SKILL_COLOR_PRIORITIES[skillColor] || 70;
+								}
+							}
+						}
 						//貝多芬戰術
 						if (beethovenState.isActive) {
 							//如果是減CT技能,不改變特殊優先級
@@ -7766,7 +7800,7 @@ function onGameApp() {
 								if (beethovenState.targetColors === skillColor) {
 									//是需要的目標顏色,提升至優先區(10~19)
 									const priorityAdjustments = {green: -20, yellow: -30, blue: -40, red: -50};
-									if (skillColor in priorityAdjustments) calculatedPriority + priorityAdjustments[skillColor];
+									if (skillColor in priorityAdjustments) calculatedPriority += priorityAdjustments[skillColor];
 								}
 							}
 						}
