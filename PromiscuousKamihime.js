@@ -1743,6 +1743,9 @@ function onGameApp() {
 	//eidolon Orb robot資料區
 	let _isEidolonOrbSearching = false;//避免重復執行
 
+	//free man robot資料
+	let _isFreeManSearching = false;//避免重復執行
+
 	//epic robot資料區
 	let _isEpicSearching = false;//避免重復執行
 	const _epicQuests = [];//待處理的史詩關卡
@@ -3391,26 +3394,29 @@ function onGameApp() {
 		try {
 			//await inspectAndDownloadAllKhInstances();
 			//列出所有轉蛋資訊
-			//fetchAllGachaPools();
+			//await fetchAllGachaPools();
 			//取得隊伍資料
-			//fetchPartyDetails();
+			//await fetchPartyDetails();
 			//查詢表情符號
-			//fetchOwnedStamps();
+			//await fetchOwnedStamps();
 			//查詢關卡資料
-			//fetchElementQuest();
-			//fetchMaterialQuest();
-			//fetchAccessoryQuest();
-			await fetchEpicQuest();
+			//await fetchElementQuest();
+			//await fetchMaterialQuest();
+			//await fetchAccessoryQuest();
+			//await fetchEpicQuest();
 			//使用藥水
 			//await useSuperPotion();
 			//await usePotion();
 
-			// const rescueId = await battleGetRescueId();//救援碼
-			// if (rescueId) {
-			// 	sendStringToFirebase(rescueId);
-			// } else {
-			// 	debugLog("no rescue id");
-			// }
+			const rescueId = await battleGetRescueId();//救援碼
+			if (rescueId) {
+				sendStringToFirebase(rescueId);
+			} else {
+				debugLog("no rescue id");
+			}
+
+			//const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_quests`, json: {type: "raid"}}, "unblock");
+			//debugLog(JSON.stringify(raidRes.body, null, 2));
 
 			// //個人留言板
 			// const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_greets`,json: {a_player_id: "me"}}, "unblock");
@@ -3805,7 +3811,7 @@ function onGameApp() {
 				return result;
 			} else if (unclearedQuest.type === "epic_battle") {
 				debugLog(`battle: ${epicData.eventName}-${unclearedQuest.title}(${unclearedQuest.quest_id})`);
-				return await handleEpicBattle(unclearedQuest.quest_id, epicData.elementType);
+				return await handleEpicBattle(unclearedQuest.quest_id, epicData.targetElement, epicData.partyId);
 			}
 			return 0;
 		} catch (error) {
@@ -3841,14 +3847,13 @@ function onGameApp() {
 	/**
 	 * @description 處理戰鬥類型的史詩關卡
 	 * @param {object} questId - 要執行的關卡物件
-	 * @param {number} elementType = 關卡元素類型
+	 * @param {number} targetElement - 克制敵人的我方屬性
+	 * @param {number} partyId - 我方出戰隊伍ID
 	 * @returns {number} 進入戰鬥關卡回傳2, 未知錯誤回傳3
 	 */
-	async function handleEpicBattle(questId, elementType) {
+	async function handleEpicBattle(questId, targetElement, partyId) {
 		try {
 			//取得剋制屬性與對應隊伍
-			const targetElement = await getAdvantageElement(elementType);
-			const partyId = await getPartyIdByElement(targetElement);
 			if (!partyId) {debugLog("no suitable party found. bailing out");return 3;}
 			//取得支援幻獸
 			const supportSummonId = await getSupportSummonId(targetElement);
@@ -3864,10 +3869,7 @@ function onGameApp() {
 				}
 			};
 			const isSuccess = await launchRaidBattle(currentQuest);
-			if (!isSuccess) {
-				debugLog("failed to launch raid battle. aborting");
-				return 3;
-			}
+			if (!isSuccess) {debugLog("failed to launch raid battle. aborting");return 3;}
 			return 2;
 		} catch (error) {
 			debugLog(`handleEpicBattle: ${error.message || error}`);
@@ -3937,6 +3939,46 @@ function onGameApp() {
 			debugLog("getPartyIdByElement: " + error);
 			return null;
 		}
+	}
+	/**
+	 * @description 一次性取得所有屬性對應的隊伍，建立字典快取
+	 * @returns {Promise<object>} 回傳 { map: { 屬性: 隊伍ID }, defaultPartyId: 預設隊伍ID, defaultElement: 預設隊伍屬性 }
+	 */
+	async function buildElementPartyMap() {
+		const result = {map: {}, defaultPartyId: null, defaultElement: null};
+		try {
+			const apiAParties = kh.createInstance("apiAParties");
+			const response = await apiAParties.getList();
+			const partyIds = response.body?.a_party_ids?.slice(0, 84);
+			if (!partyIds || partyIds.length === 0) {
+				debugLog("No party IDs found in the roster.");
+				return result;
+			}
+			for (const id of partyIds) {
+				const deckData = await apiAParties.getSelectionDeck(id);
+				const deck = deckData.body?.deck;
+				if (deck) {
+					//記錄當前選中的預設隊伍 (作為幻屬性或查無克制屬性時的備案)
+					if (deck.selected === true && result.defaultPartyId === null) {
+						result.defaultPartyId = deck.a_party_id;
+						result.defaultElement = deck.element_type;
+					}
+					//如果該屬性還沒被記錄過，則記錄下來
+					if (result.map[deck.element_type] === undefined) {
+						result.map[deck.element_type] = deck.a_party_id;
+					}
+				}
+				//檢查是否已經找齊 0~5 屬性以及預設隊伍
+				const foundBasicElements = Object.keys(result.map).filter(k => k >= 0 && k <= 5).length;
+				if (foundBasicElements === 6 && result.defaultPartyId !== null) {
+					debugLog("All elements and default party mapped. Breaking early.");
+					break; // 全部找齊了，提早結束迴圈，省下後續的 API 請求時間！
+				}
+			}
+		} catch (error) {
+			debugLog("buildElementPartyMap error: " + error);
+		}
+		return result;
 	}
 	/**
 	 * @description 查詢表情符號
@@ -4096,12 +4138,12 @@ function onGameApp() {
 					break;
 				case "freeMan":
 					switch (stepName) {
-						case "submitOrder":result = await robotFreeManStart();break;
+						case "submitOrder":if (!_isFreeManSearching) {_isFreeManSearching = true;setTimeout(robotFreeManStart, 0)};break;
 						case "BattleRescue":break;
 						case "died":break;
 						case "onBattleEnd":break;
-						case "onQuestResult":result = await robotFreeManTrigger();break;
-						case "onQuestResultTimeout":result = await robotFreeManTrigger();break;
+						case "onQuestResult":if (!_isFreeManSearching) {_isFreeManSearching = true;setTimeout(robotFreeManTrigger, 0)};break;
+						case "onQuestResultTimeout":if (!_isFreeManSearching) {_isFreeManSearching = true;setTimeout(robotFreeManTrigger, 0)};break;
 					}
 					break;
 			}
@@ -4253,64 +4295,64 @@ function onGameApp() {
 	 */
 	async function robotFreeManStart() {
 		try {
+			_isFreeManSearching = true;
 			//戰鬥中不作用
-			if (_currentSceneName === "battle") return;
+			if (_currentSceneName === "battle") {_isFreeManSearching = false;return;}
+			//結算畫面時先跳至主頁,避免與結算觸發的程序衝突
+			if (_currentSceneName === "q_result") {
+				const router = kh.createInstance("router");
+				if (router) router.navigate("mypage/my_001");
+			}
 			robotFreeManTrigger();
 		} catch (error) {
 			debugLog("robotFreeManStart: " + error);
 		}
+		_isFreeManSearching = false;
 	}
 	/**
-	 * @description 測試多種任務轉換, 64-2幻獸點關卡 或是 救援Raid
+	 * @description 測試多種任務轉換, Raid 或是 64-2幻獸點關卡
 	 * @returns {boolean} 放行程式繼續執行回傳true,否則回傳false
 	 */
 	async function robotFreeManTrigger() {
 		try {
-			const rescueId = await fetchStringFromFirebase();
-			if (rescueId) {
-				const pureRescueId = rescueId.slice(0, 9);
-				await refillApBpIfNeeded();
-				await settleUnverifiedBattles();
-				if (await joinRescueRaid(pureRescueId)) {
-					await sleep(1000);
-					return false;
-				} else {
-					debugLog("join fail, give up");
-					return true;
-				}
-			} else {
-				//主線關卡章節
-				const questType = "main";
-				const mainQuestID = 64;
-				const episodeNum = 2;
-				//取得關卡之前的資訊
-				const main642PrevInfo = await getQuestPrevious(mainQuestID, questType, episodeNum);
-				const prevPartyId = main642PrevInfo.prevPartyId;
-				const prevSummonElement = main642PrevInfo.prevSummonElement;
-				//取得支援幻獸
-				const supportSummonId = await getSupportSummonId(prevSummonElement);
-				//產生入場資訊
-				const currentQuest = {
-					url: `${kh.env.urlRoot}/a_quests/${mainQuestID}/start`,
-					json: {
-						type: questType,
-						a_party_id: prevPartyId,
-						support_a_summon_id: supportSummonId,
-						support_summon_tab_element_type: prevSummonElement,
-						episode_num: episodeNum
-					}
-				}
-				//進入幻獸點關卡
-				if (await launchRaidBattle(currentQuest)) {
-					//return false;
-				} else {
-					debugLog("launch fail, give up");
-				}
+			_isFreeManSearching = true;
+			if (await joinPublicRaids(false)) {
+				debugLog("get a quest...");
+				_isFreeManSearching = false;
 				return false;
+			}
+			//主線關卡章節
+			const questType = "main";
+			const mainQuestID = 64;
+			const episodeNum = 2;
+			//取得關卡之前的資訊
+			const main642PrevInfo = await getQuestPrevious(mainQuestID, questType, episodeNum);
+			const prevPartyId = main642PrevInfo.prevPartyId;
+			const prevSummonElement = main642PrevInfo.prevSummonElement;
+			//取得支援幻獸
+			const supportSummonId = await getSupportSummonId(prevSummonElement);
+			//產生入場資訊
+			const currentQuest = {
+				url: `${kh.env.urlRoot}/a_quests/${mainQuestID}/start`,
+				json: {
+					type: questType,
+					a_party_id: prevPartyId,
+					support_a_summon_id: supportSummonId,
+					support_summon_tab_element_type: prevSummonElement,
+					episode_num: episodeNum
+				}
+			}
+			//進入幻獸點關卡
+			if (await launchRaidBattle(currentQuest)) {
+				_isFreeManSearching = false;
+				return false;
+			} else {
+				debugLog("launch fail, give up");
 			}
 		} catch (error) {
 			debugLog("robotFreeManTrigger: " + error);
 		}
+		_isFreeManSearching = false;
 		return true;
 	}
 	/**
@@ -4793,17 +4835,24 @@ function onGameApp() {
 			const epicRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_epic_subject`}, "unblock");
 			const epicData = epicRes?.body;
 			if (!epicData) {debugLog("epic subject payload is missing. skipping");_isEpicSearching = false;return true;}
+			//取得所有屬性隊應的隊伍
+			const partyData = await buildElementPartyMap();
+			const ADVANTAGE_MAP = {0: 1, 1: 3, 2: 0, 3: 2, 4: 5, 5: 4};
 
-			// let preElement = -1;
-			// let advantageElement = 0;
-			// let advantagePartyId = 0;
-			for (const [element, quests] of Object.entries(epicData)) {
+			for (const [elementStr, quests] of Object.entries(epicData)) {
 				const unlockedQuests = quests.filter(quest => quest.is_unlocked === true);
-				// if (preElement !== element) {
-				// 	preElement = element;
-				// 	advantageElement = await getAdvantageElement(element);//取得克制的屬性
-				// 	advantagePartyId = await getPartyIdByElement(advantageElement);//取得克制的隊伍
-				// }
+				//查表取得克制屬性與對應隊伍
+				const element = parseInt(elementStr, 10);
+				let targetElement = ADVANTAGE_MAP[element];
+				let partyId;
+				if (targetElement !== undefined && partyData.map[targetElement] !== undefined) {
+					partyId = partyData.map[targetElement];
+				} else {
+					partyId = partyData.defaultPartyId;
+					targetElement = partyData.defaultElement; 
+				}
+				if (!partyId) {debugLog(`No valid party found for element ${elementStr}. Skipping.`);continue;}
+
 				for (const quest of unlockedQuests) {
 					const detailRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_epic_subject/${quest.epic_id}`}, "unblock");
 					const detail = detailRes?.body;
@@ -4836,6 +4885,8 @@ function onGameApp() {
 							shop: detail.shop_id,//關卡專屬商店
 							questId: -1,//貨幣獲取關卡的識別碼
 							elementType: element,//關卡敵人屬性
+							targetElement: targetElement,//直接寫入已查好的克制屬性
+							partyId: partyId,//直接寫入已查好的隊伍ID
 							isCleared: false,//關卡開啟檢查
 							currencyData: [],//貨幣資訊
 							shopData: shopItems//目標商品資訊
@@ -4925,7 +4976,7 @@ function onGameApp() {
 				}
 			}
 			//挑戰關卡累積貨幣數量
-			await handleEpicBattle(currentEpic.questId, currentEpic.elementType);
+			await handleEpicBattle(currentEpic.questId, currentEpic.targetElement, currentEpic.partyId);
 			_isEpicSearching = false;
 			return false;
 		} catch (error) {
@@ -5535,6 +5586,13 @@ function onGameApp() {
 				debugLog("no luck gacha");
 				return;
 			}
+			//檢查魔寶石數量
+			const currencyRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_players/me/currency`}, "unblock");
+			const stoneAmount = currencyRes?.body?.stone || 0;
+			if (stoneAmount < 330) {
+				debugLog(`stone balance too low (${stoneAmount}/330). aborting.`);
+				return;
+			} 
 			//find the gacha_id
 			const cat2Res = await _httpClient.post({url: `${kh.env.urlRoot}/gacha_category/${luckCategoriesId}`}, "unblock");
 			const gachaIdArray = cat2Res.body?.gacha_information?.map(info => info.gacha_id) || [];
@@ -5678,7 +5736,7 @@ function onGameApp() {
 				}
 				amount -= gachaNum;
 				debugLog("Remaining tickets:" + amount);
-				await sleep(50);//延遲再抽
+				await sleep(200);//延遲再抽
 			}
 			magicJewels = magicJewels * 5;
 			debugLog("magic jewels: " + magicJewels);
@@ -5752,7 +5810,7 @@ function onGameApp() {
 					}
 				}
 				//還有剩餘的券, 等待一下再抽
-				if (eventTicketsCount > 0) await sleep(50);
+				if (eventTicketsCount > 0) await sleep(200);
 			}
 			magicJewels = magicJewels * 5;
 			debugLog("magic jewels: " + magicJewels);
