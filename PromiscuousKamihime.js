@@ -3415,9 +3415,6 @@ function onGameApp() {
 				debugLog("no rescue id");
 			}
 
-			//const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_quests`, json: {type: "raid"}}, "unblock");
-			//debugLog(JSON.stringify(raidRes.body, null, 2));
-
 			// //個人留言板
 			// const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_greets`,json: {a_player_id: "me"}}, "unblock");
 			// if (raidRes.body.max_record_count < 1) {
@@ -4140,7 +4137,7 @@ function onGameApp() {
 					switch (stepName) {
 						case "submitOrder":if (!_isFreeManSearching) {_isFreeManSearching = true;setTimeout(robotFreeManStart, 0)};break;
 						case "BattleRescue":break;
-						case "died":break;
+						case "died":if (!_isFreeManSearching) {_isFreeManSearching = true;setTimeout(robotFreeManTrigger, 0)};break;
 						case "onBattleEnd":break;
 						case "onQuestResult":if (!_isFreeManSearching) {_isFreeManSearching = true;setTimeout(robotFreeManTrigger, 0)};break;
 						case "onQuestResultTimeout":if (!_isFreeManSearching) {_isFreeManSearching = true;setTimeout(robotFreeManTrigger, 0)};break;
@@ -4291,7 +4288,7 @@ function onGameApp() {
 		return true;
 	}
 	/**
-	 * @description 64-2幻獸點關卡 或是 救援Raid
+	 * @description Raid或是64-2幻獸點關卡
 	 */
 	async function robotFreeManStart() {
 		try {
@@ -4310,7 +4307,7 @@ function onGameApp() {
 		_isFreeManSearching = false;
 	}
 	/**
-	 * @description 測試多種任務轉換, Raid 或是 64-2幻獸點關卡
+	 * @description 測試多種任務轉換, Raid或是64-2幻獸點關卡
 	 * @returns {boolean} 放行程式繼續執行回傳true,否則回傳false
 	 */
 	async function robotFreeManTrigger() {
@@ -4553,22 +4550,27 @@ function onGameApp() {
 				});
 			}
 		}
-		// 加入RAID關卡
+		//加入RAID關卡
 		const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_quests`, json: {type: "raid"}}, "unblock");
 		const questLists = raidRes?.body?.raid_quest_lists;
 		if (questLists) {
 			const questList = [];
+			const skipQuestIds = new Set();
 			for (const key in questLists) {
 				const group = questLists[key];
 				if (!group || !Array.isArray(group.data)) continue;
 				for (const item of group.data) {
+					if (skipQuestIds.has(item.quest_id)) continue;
 					const enemyLevel = item.raid_info?.enemy_level;
 					if (!enemyLevel || enemyLevel <= 0) continue;
 					if (enemyLevel >= _dailyQuestLevelMax) continue;
 					if (item.is_new) continue;
 					const challengeCount = item.limit_info?.remaining_challenge_count;
 					if (!challengeCount || challengeCount < 1) continue;
-					
+					//批次戰鬥的應對
+					if (item.is_group_defeat && Array.isArray(item.group_defeat_quest_ids)) {
+						item.group_defeat_quest_ids.forEach(id => skipQuestIds.add(id));
+					}
 					const { prevPartyId, prevSummonElement } = await getQuestPrevious(item.quest_id, "raid");
 					for (let i = 0; i < challengeCount; i++) {
 						questList.push({
