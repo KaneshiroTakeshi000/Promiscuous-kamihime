@@ -3188,7 +3188,8 @@ function onGameApp() {
 	 */
 	async function inspectAndDownloadAllKhInstances() {
 		// battleUI
-		const battleUI = kh.createInstance("battleUI");
+		_battleWorld = kh.createInstance("battleWorld");
+		const battleUI = _battleWorld?.battleUI;
 		if (battleUI) {
 			inspectObjectAndDownload(battleUI, "battleUI");
 			inspectObjectAndDownload(battleUI.CenterPanel, "battleUI_CenterPanel");
@@ -5828,35 +5829,29 @@ function onGameApp() {
 	async function claimMissionRewards() {
 		try {
 			debugLog("clear Missions");
-			const missionApi = kh.createInstance("apiAMissions");
-			const [dailyRes, weeklyRes, eventRes, normalRes, premiumPassDailyRes, premiumPassWeeklyRes] = await Promise.all([
-				missionApi.getDaily(),
-				missionApi.getWeekly(),
-				missionApi.getEvent(),
-				missionApi.getNormal(),
-				missionApi.getPremiumPassDaily(),
-				missionApi.getPremiumPassWeekly()
-			]);
-			const missionCategories = [
-				{ body: dailyRes?.body, type: "daily" },
-				{ body: weeklyRes?.body, type: "weekly" },
-				{ body: eventRes?.body, type: "event" },
-				{ body: normalRes?.body, type: "normal" },
-				{ body: premiumPassDailyRes?.body, type: "premium_pass_daily" },
-				{ body: premiumPassWeeklyRes?.body, type: "premium_pass_weekly" }
-			];
-			for (const { body, type } of missionCategories) {
+			const missionTypes = ["daily","weekly","event","normal","premium_pass_daily","premium_pass_weekly"];
+			for (const type of missionTypes) {
+				const res = await _httpClient.get({url: `${kh.env.urlRoot}/a_missions/${type}`}, "unblock");
+				const body = res?.body;
 				if (!body || body.complete) continue;
 				const missions = body.missions || [];
 				for (const item of missions) {
 					if (item.clear) {
-						await missionApi.receiveMissionReward(type, item.a_mission_id);
+						await _httpClient.post({url: `${kh.env.urlRoot}/a_missions/${type}/${item.a_mission_id}/receive`}, "unblock");
 					}
 				}
 			}
+			const premiumRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_premium_pass/`}, "unblock");
+			const premiumBody = premiumRes?.body;
+			if (!premiumBody) {
+				debugLog("no premium pass");
+				return;
+			}
+			const premiumId = premiumBody.id;
+			await _httpClient.post({"url":`${kh.env.urlRoot}/a_premium_pass/${premiumId}/receive/`}, "unblock");
 			debugLog("Missions cleared");
 		} catch (error) {
-			debugLog("claimMissionRewards: " + error);
+			debugLog("claimMissionRewards: " + JSON.stringify(error, null, 2));
 		}
 	}
 	/**
