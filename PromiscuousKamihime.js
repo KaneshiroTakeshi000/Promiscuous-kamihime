@@ -1161,7 +1161,7 @@ function onGameFrame() {
 			const dailyAccessorySelect = document.createElement("select");
 			dailyAccessorySelect.setAttribute("style", selectStyle);
 			applySelectHoverEffect(dailyAccessorySelect);
-			const dailyAccessory = Number(GM_getValue("dailyAccessory", 87));
+			const dailyAccessory = Number(GM_getValue("dailyAccessory", 5));
 			accessoryOptions.forEach(function(optData) {
 				const opt = document.createElement("option");
 				opt.value = optData.value;
@@ -1711,7 +1711,7 @@ function onGameApp() {
 	let _dailyQuestLevelMax = GM_getValue("dailyQuestLevelMax", 111);//每日Raid關卡等級上限,大於此等級不執行
 	let _dailyElementQuestId = 37;//每日屬性任務的執行關卡
 	let _dailyMaterialQuestId = 35;//每日素材任務的執行關卡
-	let _dailyAccessoryQuestId = GM_getValue("dailyAccessory", 87);//每日飾品任務的執行關卡
+	let _dailyAccessoryQuestId = GM_getValue("dailyAccessory", 5);//每日飾品任務的執行關卡
 
 	//public raid robot資料區
 	let _isPublicRaidSearching = false;//避免重復執行
@@ -8355,13 +8355,16 @@ function onGameApp() {
 				const summonList = battleWorld?.battleUI?.SummonPanelGroup?.panelList || [];
 				const targetSummon = summonList.find(summon => summon.isUsable());
 				if (targetSummon) {
-					targetSummon.setLocked(true);//提早鎖定
 					try {
-						await battleWorld.summonAttackExecute(targetSummon.index);
+						const bufferedInput = kh.createInstance("SummonBufferedInput", [targetSummon.index]);
+						await bufferedInput.execute();
+						//await battleWorld.summonAttackExecute(targetSummon.index);
 					} catch (error) {
 						if (error && error.bufferedInputLength >= 2) {
 							debugLog("Summon attack execution failed.");
 						}
+						await battleReload(); //資料不同步,強制 reload
+						_playerActionTime = Date.now();
 					}
 					return;
 				}
