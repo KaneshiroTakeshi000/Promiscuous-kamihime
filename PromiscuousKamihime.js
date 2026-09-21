@@ -1750,7 +1750,7 @@ function onGameApp() {
 	let _isEpicSearching = false;//避免重復執行
 	const _epicQuests = [];//待處理的史詩關卡
 	const _epicTargetItemIds = [3, 11, 4001, 10002];//要兌換的目標識別[魂玉,豪華轉蛋券,幻魔核心,幻獸寶珠]
-	const _minimumEpicCurrency = 300;//最小貨幣數量
+	const _minimumEpicCurrency = 200;//最小貨幣數量
 	let _currentEpicIndex = -1;//正在累積貨幣的史詩關卡
 
 	//檢視傳輸資訊
@@ -4314,6 +4314,20 @@ function onGameApp() {
 	async function robotFreeManTrigger() {
 		try {
 			_isFreeManSearching = true;
+
+			await settleUnverifiedBattles();
+			const currentHour = new Date().getHours(); //在19:00~23:59
+			if (currentHour >= 19 && currentHour <= 23) {
+				const rescueId = await fetchStringFromFirebase();
+				if (rescueId) {
+					const pureRescueId = rescueId.slice(0, 9);
+					if (await joinRescueRaid(pureRescueId)) {
+						await sleep(1000);
+						_isFreeManSearching = false;
+						return false;
+					}
+				}
+			}
 			if (await joinPublicRaids(false)) {
 				debugLog("get a quest...");
 				_isFreeManSearching = false;
@@ -4424,6 +4438,8 @@ function onGameApp() {
 	async function robotDailyQuestResult() {
 		try {
 			_isDailySearching = true;
+
+			if (_dailyQuests.length === 0) await refreshDailyQuests();
 			while (_dailyQuests.length > 0) {
 				debugLog("mission count: " + _dailyQuests.length);
 				//取出一個戰鬥任務
@@ -4441,23 +4457,17 @@ function onGameApp() {
 				} else {
 					debugLog("launch fail, give up");
 				}
-				_isDailySearching = false;
 				return false;
 			}
-			if (_dailyQuests.length === 0) {
-				//再檢查一次
-				await refreshDailyQuests();
-				if (_dailyQuests.length === 0) {
-					debugLog("the daily robot is asleep");
-					sendRobotStrike();
-				}
-			}
-			_isDailySearching = false;
+			debugLog("the daily robot is asleep")
+			sendRobotStrike();
+			return true;
 		} catch (error) {
 			debugLog("robotDailyQuestResult: " + error);
+			return true;
+		}finally {
 			_isDailySearching = false;
 		}
-		return true;
 	}
 	/**
 	 * @description 檢查並建立每日/每週/RAID任務佇列
@@ -4469,6 +4479,8 @@ function onGameApp() {
 		let materialQuestCount = 0;
 		let accessoryQuestCount = 0;
 
+		// 重新檢查任務，可能需要補充 AP/BP
+		await refillApBpIfNeeded();
 		// 檢查每日任務
 		const dailyRes = await missionApi.getDaily();
 		const dailyMissions = dailyRes?.body?.missions || [];
@@ -4489,7 +4501,7 @@ function onGameApp() {
 					break;
 			}
 		}
-		// 檢查每周任務
+		//檢查每周任務
 		const weeklyRes = await missionApi.getWeekly();
 		const weeklyMissions = weeklyRes?.body?.missions || [];
 		for (const item of weeklyMissions) {
@@ -4535,7 +4547,7 @@ function onGameApp() {
 				});
 			}
 		}
-		// 加入飾品任務
+		//加入飾品任務
 		if (accessoryQuestCount > 0) {
 			const accessoryPrevInfo = await getQuestPrevious(_dailyAccessoryQuestId, "accessory");
 			for (let i = 0; i < accessoryQuestCount; i++) {
@@ -4598,8 +4610,46 @@ function onGameApp() {
 				});
 			}
 		}
-		// 重新檢查任務後，可能需要補充 AP/BP
-		await refillApBpIfNeeded();
+		//兵仗關卡,每打完一次會重骰屬性
+		const weaponRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_weapon_break_quest`}, "unblock");
+		const weaponRemains = weaponRes?.body?.trial_count?.remains || 0;
+		if (weaponRemains > 0) {
+			const targetDifficulty = "hard";//選擇難度: "normal", "hard"
+			const targetWeaponType = "ax";//選擇武器: "sword", "special_sword", "spear", "ax", "staff", "hammer", "gun", "bow", "magic_item"
+			const difficultyGroup = weaponRes.body[targetDifficulty];
+			if (!difficultyGroup) {debugLog(`unknown difficulty. skipping.`);return;}
+			let selectedQuest = null;//目標關卡
+			for (const key in difficultyGroup) {
+				if (difficultyGroup[key].weapon_type === targetWeaponType) {
+					selectedQuest = difficultyGroup[key];
+					break;
+				}
+			}
+			if (!selectedQuest) {debugLog(`no quest found. skipping.`);return;}
+			//取得所有屬性隊應的隊伍
+			const partyData = await buildElementPartyMap();
+			const ADVANTAGE_MAP = {0: 1, 1: 3, 2: 0, 3: 2, 4: 5, 5: 4};
+			//查表取得克制屬性與對應隊伍
+			const element = selectedQuest?.target_element || 0;
+			let targetElement = ADVANTAGE_MAP[element];
+			let partyId;
+			if (targetElement !== undefined && partyData.map[targetElement] !== undefined) {
+				partyId = partyData.map[targetElement];
+			} else {
+				partyId = partyData.defaultPartyId;
+				targetElement = partyData.defaultElement; 
+			}
+			if (!partyId) {debugLog(`no valid party found for element ${element}. skipping.`);return;}
+			_dailyQuests.push({
+				url: `${kh.env.urlRoot}/a_quests/${selectedQuest.quest_id}/start`,
+				json: {
+					type: selectedQuest.sub_type,
+					a_party_id: partyId,
+					support_a_summon_id: 0,
+					support_summon_tab_element_type: targetElement
+				}
+			});
+		}
 	}
 	/**
 	 * @description 煉獄蘿蔔，查詢活動資訊後執行戰鬥
@@ -4841,7 +4891,13 @@ function onGameApp() {
 			//取得所有屬性隊應的隊伍
 			const partyData = await buildElementPartyMap();
 			const ADVANTAGE_MAP = {0: 1, 1: 3, 2: 0, 3: 2, 4: 5, 5: 4};
-
+			//計算關卡數量
+			let totalUnlockedQuests = 0;
+			for (const quests of Object.values(epicData)) {
+				totalUnlockedQuests += quests.filter(quest => quest.is_unlocked === true).length;
+			}
+			let currentProgress = 0;
+			//開始查詢
 			for (const [elementStr, quests] of Object.entries(epicData)) {
 				const unlockedQuests = quests.filter(quest => quest.is_unlocked === true);
 				//查表取得克制屬性與對應隊伍
@@ -4857,17 +4913,20 @@ function onGameApp() {
 				if (!partyId) {debugLog(`No valid party found for element ${elementStr}. Skipping.`);continue;}
 
 				for (const quest of unlockedQuests) {
+					currentProgress++;
 					const detailRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_epic_subject/${quest.epic_id}`}, "unblock");
 					const detail = detailRes?.body;
-					if (!detail) continue;
+					if (!detail) {sendRobotStrike();_isEpicSearching = false;return false;}
 					const eventName = detail.event_name;
-					///收集商店還有目標物品沒換的關卡
+					await sleep(100);
+					if (_autonomousRobot !== "epic") {debugLog("stop robot epic");_isEpicSearching = false;return false;}
+					//收集商店還有目標物品沒換的關卡
 					let unfinished = false;
 					const shopItems = [];
 					const shopRes = await _httpClient.get({url:`${kh.env.urlRoot}/shop/${detail.shop_id}`}, "unblock");
 					const catalogs = shopRes?.body?.catalogs;
-					if (!catalogs) continue;
-
+					if (!catalogs) {sendRobotStrike();_isEpicSearching = false;return false;}
+					debugLog(`progress: ${currentProgress} / ${totalUnlockedQuests}, ${eventName}`);
 					for (const catalog of catalogs) {
 						if (!catalog.products) continue;
 						for (const product of catalog.products) {
@@ -4875,7 +4934,7 @@ function onGameApp() {
 							const stockAmount = product.stock_info?.amount || 0;
 							if (_epicTargetItemIds.includes(itemId)) {
 								shopItems.push({name: product.name, productId: product.product_id, amount: stockAmount});
-								debugLog(`${eventName} -> ${product.name} (ID: ${product.product_id}): ${stockAmount} in stock.`);
+								//debugLog(`${eventName} -> ${product.name} (ID: ${product.product_id}): ${stockAmount} in stock.`);
 								if (stockAmount > 0) unfinished = true;
 							}
 						}
@@ -4896,6 +4955,8 @@ function onGameApp() {
 						});
 					}
 				}
+				await sleep(100);
+				if (_autonomousRobot !== "epic") {debugLog("stop robot epic");_isEpicSearching = false;return false;}
 			}
 			//開始清掃史詩關卡
 			if (_epicQuests.length === 0) {
@@ -7817,15 +7878,29 @@ function onGameApp() {
 		try {
 			switch (_questType) {
 				case "raid"://合作副本
-					if (_enemyLevel < 90) {
-						await setBattleAutoState(1);//綠自動
-					} else if (_enemyLevel < 160) {
-						await setBattleAutoState(2);//紅自動
-					} else {
-						if (_autoAttackEnabled) {
-							await setBattleAutoState(0);//自定義自動
-						} else {
+					if (_autonomousRobot === "freeMan") {
+						if (_enemyLevel < 90) {
+							await setBattleAutoState(1);//綠自動
+						} else if (_enemyLevel < 150) {
 							await setBattleAutoState(2);//紅自動
+						} else {
+							if (_autoAttackEnabled) {
+								await setBattleAutoState(0);//自定義自動
+							} else {
+								await setBattleAutoState(2);//紅自動
+							}
+						}
+					} else {
+						if (_enemyLevel < 90) {
+							await setBattleAutoState(1);//綠自動
+						} else if (_enemyLevel < 160) {
+							await setBattleAutoState(2);//紅自動
+						} else {
+							if (_autoAttackEnabled) {
+								await setBattleAutoState(0);//自定義自動
+							} else {
+								await setBattleAutoState(2);//紅自動
+							}
 						}
 					}
 					break;
