@@ -1042,6 +1042,14 @@ function onGameFrame() {
 				GM_setValue("isAutoApBpRefillEnabled", this.checked);
 			});
 			advContentArea.appendChild(autoApBpLabel);
+			//飾品顯示文字效果
+			const accessoryTextCheckbox = document.createElement("input");
+			accessoryTextCheckbox.type = "checkbox";
+			accessoryTextCheckbox.checked = GM_getValue("accessoryTextEnabled", false);
+			const accessoryTextLabel = createToggleSwitch(accessoryTextCheckbox, "飾品效果文字", function() {
+				GM_setValue("accessoryTextEnabled", this.checked);
+			});
+			advContentArea.appendChild(accessoryTextLabel);
 			//建立 4列 × 2欄 的網格佈局
 			const buttonGrid02 = document.createElement("div");
 			buttonGrid02.setAttribute("style", "display:grid; grid-template-columns: 1fr 1fr; gap:4px; width:100%; box-sizing:border-box;");
@@ -1671,6 +1679,7 @@ function onGameApp() {
 	let _autoAPBPEnabled = GM_getValue("isAutoApBpRefillEnabled", false);//自動補給AP|BP
 	let _autoReloadEnabled = GM_getValue("isAutoReloadEnabled", false);//自動戰鬥時閒置重整(防卡)
 	const _autoReloadWaiting = 16000;//閒置時間(毫秒)
+	let _accessoryTextEnabled = GM_getValue("accessoryTextEnabled", false);//顯示飾品文字資訊
 	let _logPacketsEnabled = GM_getValue("isPacketLoggingEnabled", false);//輸出傳輸資訊
 	let _connectingVisible = GM_getValue("hideConnectingScreen", false);//Connecting畫面
 	let _errorPopupVisible = GM_getValue("disableErrorPopups", false);//Error彈窗
@@ -1927,6 +1936,9 @@ function onGameApp() {
 			});
 			GM_addValueChangeListener("isAutoReloadEnabled", function(key, oldValue, newValue, remote) {
 				_autoReloadEnabled = newValue;//自動戰鬥時閒置重整(防卡)
+			});
+			GM_addValueChangeListener("accessoryTextEnabled", function(key, oldValue, newValue, remote) {
+				_accessoryTextEnabled = newValue;//顯示飾品文字資訊
 			});
 			GM_addValueChangeListener("isPacketLoggingEnabled", function(key, oldValue, newValue, remote) {
 				_logPacketsEnabled = newValue;//Http傳輸資訊
@@ -2554,6 +2566,64 @@ function onGameApp() {
 				loggerPrototype.reportWidgetUserOperationRaw = loggerPrototype.reportWidgetUserOperation;
 				loggerPrototype.reportWidgetUserOperation = function(actionType, widgetNode) {};
 			}
+			//飾品效果使用文字顯示
+			const origAccessoryCardSetData = kh.CoreCardAccessoryUI.prototype.setData;
+			kh.CoreCardAccessoryUI.prototype.setDataRaw = kh.CoreCardAccessoryUI.prototype.setData;
+			kh.CoreCardAccessoryUI.prototype.setData = function (record, sortCondition, componentName) {
+				origAccessoryCardSetData.apply(this, arguments);
+				if (this._currentActionName !== this.ACTION_NAME_FULL) return;
+				//清空新增的文字標籤
+				const nodeNameExp = /^status_label_/;
+				this.uiNode.seekWidgets((node) => {
+					if (nodeNameExp.test(node.getName())) {
+						node.setText("");
+						node.setVisible(false);
+					}
+				});
+				//處理文字標籤
+				if (_accessoryTextEnabled && record.sub_effects !== undefined) {
+					record.sub_effects.forEach((sub_effect, num) => {
+						const labelName = `status_label_${num}`;
+						let statusLabelNode = this.uiNode.seekWidgetByName(labelName);
+						//新增文字標籤
+						if (!statusLabelNode) {
+							let position = 0.0;
+							switch (num) {
+								case 0: position=100;break;
+								case 1: position=64;break;
+								case 2: position=28;break;
+							}
+							statusLabelNode = new ccui.Text();
+							statusLabelNode.setName(labelName);
+							statusLabelNode.setPosition(0, position);
+							statusLabelNode.setAnchorPoint(0, 0);
+							statusLabelNode.setFontSize(13);
+							statusLabelNode.setFontName("GameFont");
+							statusLabelNode.ignoreContentAdaptWithSize(false);
+							statusLabelNode.setContentSize(cc.size(150, 32));
+							statusLabelNode.setTextHorizontalAlignment(0);
+							statusLabelNode.setTextVerticalAlignment(1);
+							statusLabelNode.setTextColor(cc.color(255, 255, 255, 255));
+							//底色背景
+							const bgLayout = new ccui.Layout();
+							bgLayout.setBackGroundColorType(1);//純色
+							bgLayout.setBackGroundColor(cc.color(0, 0, 0));//黑
+							bgLayout.setBackGroundColorOpacity(200);//半透明
+							bgLayout.setContentSize(cc.size(150, 32));
+							bgLayout.setAnchorPoint(0, 0);
+							bgLayout.setPosition(0, 0);
+							bgLayout.setLocalZOrder(-1);
+							statusLabelNode.addChild(bgLayout);
+							this.uiNode.addChild(statusLabelNode);
+						}
+						//顯示飾品效果
+						statusLabelNode.setVisible(true);
+						const slotPrefix = sub_effect.slot_number ? `[${sub_effect.slot_number}]` : "";
+						statusLabelNode.setText(`${sub_effect.effect_rate}%${sub_effect.name}${slotPrefix}`);
+					});
+				}
+			}
+
 			setTimeout(initCacheAndDelay, 1200);
 			debugLog('initialization part4 starting...');
 		} catch(error) {
@@ -4328,11 +4398,14 @@ function onGameApp() {
 					}
 				}
 			}
+			//快速救援
+			await speedRescueRaid();
+			//尋找公開的Raid
 			if (await joinPublicRaids(false)) {
 				debugLog("get a quest...");
 				_isFreeManSearching = false;
 				return false;
-			}
+			}				
 			//主線關卡章節
 			const questType = "main";
 			const mainQuestID = 64;
@@ -4438,7 +4511,6 @@ function onGameApp() {
 	async function robotDailyQuestResult() {
 		try {
 			_isDailySearching = true;
-
 			if (_dailyQuests.length === 0) await refreshDailyQuests();
 			while (_dailyQuests.length > 0) {
 				debugLog("mission count: " + _dailyQuests.length);
@@ -4478,7 +4550,6 @@ function onGameApp() {
 		let elementQuestCount = 0;
 		let materialQuestCount = 0;
 		let accessoryQuestCount = 0;
-
 		// 重新檢查任務，可能需要補充 AP/BP
 		await refillApBpIfNeeded();
 		// 檢查每日任務
@@ -4610,12 +4681,49 @@ function onGameApp() {
 				});
 			}
 		}
-		//兵仗關卡,每打完一次會重骰屬性
+		//加入兵仗泰坦關卡
+		const titanRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_quests`, json: {type: "titan_hunt"}}, "unblock");
+		const titanData = titanRes?.body?.solo_quest_lists?.data || [];
+		for (const item of titanData) {
+			if (!item.is_opened) continue;
+			if (item.is_new) continue;//未挑戰過不理會
+			//剩餘挑戰次數
+			const remainingCount = item?.limit_info?.remaining_challenge_count || 0;
+			if (remainingCount <= 0) continue;
+			//計算入場道具的最大挑戰次數
+			let maxPlayableByItems = remainingCount;
+			if (Array.isArray(item.required_item)) {
+				for (const req of item.required_item) {
+					if (req.amount > 0) {
+					const possession = req.possession_amount || 0;
+					const affordableCount = Math.floor(possession / req.amount);
+					maxPlayableByItems = Math.min(maxPlayableByItems, affordableCount);
+					}
+				}
+			}
+			if (maxPlayableByItems > 0) {
+				const { prevPartyId, prevSummonElement } = await getQuestPrevious(item.quest_id, "solo");
+				for (let i = 0; i < maxPlayableByItems; i++) {
+					_dailyQuests.push({
+						url: `${kh.env.urlRoot}/a_quests/${item.quest_id}/start`,
+						json: {
+							type: "solo",
+							a_party_id: prevPartyId,
+							support_a_summon_id: 0,
+							support_summon_tab_element_type: prevSummonElement
+						}
+					});
+				}
+			}
+		}
+		//加入兵仗武器關卡,每打完一次會重骰屬性,所以只加1次
 		const weaponRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_weapon_break_quest`}, "unblock");
 		const weaponRemains = weaponRes?.body?.trial_count?.remains || 0;
 		if (weaponRemains > 0) {
 			const targetDifficulty = "hard";//選擇難度: "normal", "hard"
-			const targetWeaponType = "ax";//選擇武器: "sword", "special_sword", "spear", "ax", "staff", "hammer", "gun", "bow", "magic_item"
+			const WEAPON_TYPES = ["sword", "special_sword", "spear", "ax", "staff", "hammer", "gun", "bow", "magic_item"];
+			const randomIndex = Math.floor(Math.random() * WEAPON_TYPES.length);
+			const targetWeaponType = WEAPON_TYPES[randomIndex];//隨機選擇武器關卡
 			const difficultyGroup = weaponRes.body[targetDifficulty];
 			if (!difficultyGroup) {debugLog(`unknown difficulty. skipping.`);return;}
 			let selectedQuest = null;//目標關卡
@@ -5203,9 +5311,6 @@ function onGameApp() {
 	async function joinPublicRaids(isEventRaids) {
 		try {
 			if(!_httpClient){debugLog("HTTP connection not initialized");return;}
-			//const apiABattles = kh.createInstance("apiABattles");
-			//const raidRes = apiABattles.getRaidRequestList();
-			//const raidRes = apiABattles.getInSessionRaidEventList();
 			let battleKind = "raid_request";
 			if (isEventRaids) battleKind = "in_session_event";
 			const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_battles`,json: {kind: battleKind}}, "unblock");
@@ -5338,6 +5443,33 @@ function onGameApp() {
 		} catch (error) {
 			debugLog("botRescueCode: " + error);
 			return false;
+		}
+	}
+	/**
+	 * @description 使用快速救援關卡
+	 */
+	async function speedRescueRaid() {
+		try {
+			if(!_httpClient){debugLog("HTTP connection not initialized");return;}
+			//檢查道具數量
+			const srRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_quests/speed_rescue_info`}, "unblock");
+			const itemCount = srRes?.body?.required_item?.possession_amount || 0;
+			if (!itemCount || itemCount < 10) return;
+			//檢查關卡
+			const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_battles`,json: {kind: "raid_request"}}, "unblock");
+			const rCount = raidRes?.body?.max_record_count;
+			if (!rCount || rCount < 1) return;
+			//尋找關卡
+			const raids = raidRes.body.data;
+			const battleIds = raids
+				.filter(item => item.can_speed_rescue === true)
+				.map(item => item.a_battle_id);
+			if (battleIds.length === 0) return;
+			//快速救援
+			await _httpClient.post({url: `${kh.env.urlRoot}/a_battles/speed_rescues`, json:{battle_ids:battleIds, quest_type:"raid", item_id:50001}}, "unblock");
+			debugLog(`speed pescue ok: ${battleIds.length}`);
+		} catch (error) {
+			debugLog("speedRescueRaid: " + debugLog(JSON.stringify(error, null, 2)));
 		}
 	}
 	/**
@@ -6095,6 +6227,23 @@ function onGameApp() {
 					});
 				}
 			}
+			//兵仗
+			//131001 靈氣核心
+			//132017 靈氣方塊
+			const titanShopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/13`}, "unblock");
+			if (titanShopRes?.body?.catalogs) {
+				const TITAN_TARGET_IDS = [132017,131001];
+				const titanProducts = titanShopRes.body.catalogs.flatMap(c => c.products);
+				const itemsToExchange = titanProducts.filter(p => 
+					TITAN_TARGET_IDS.includes(p.product_id) && p.stock_info.amount > 0
+				);
+				for (const item of itemsToExchange) {
+					purchaseQueue.push({
+						product_id: item.product_id,
+						amount: item.stock_info.amount
+					});
+				}
+			}
 			if (purchaseQueue.length === 0) {
 				debugLog("No items available for exchange at this time.");
 				return;
@@ -6510,6 +6659,7 @@ function onGameApp() {
 				const questType = episode.type;
 				debugLog("watch: " + episode.title);
 				try {
+					//進入劇情
 					await _httpClient.post({
 						url: `${kh.env.urlRoot}/a_quests/${questId}/start`,
 						json: {type: questType}
@@ -7932,6 +8082,9 @@ function onGameApp() {
 					break;
 				case "event_union_throne_raid"://煉獄十字架
 					await setBattleAutoState(1);//綠自動
+					break;
+				case "solo":
+					if (_autoAttackEnabled) await setBattleAutoState(0);//自定義自動
 					break;
 			}
 		} catch(error) {
