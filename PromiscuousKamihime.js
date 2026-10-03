@@ -1042,14 +1042,6 @@ function onGameFrame() {
 				GM_setValue("isAutoApBpRefillEnabled", this.checked);
 			});
 			advContentArea.appendChild(autoApBpLabel);
-			//卡牌顯示文字效果
-			const cardTextCheckbox = document.createElement("input");
-			cardTextCheckbox.type = "checkbox";
-			cardTextCheckbox.checked = GM_getValue("cardTextEnabled", false);
-			const cardTextLabel = createToggleSwitch(cardTextCheckbox, "卡牌文字", function() {
-				GM_setValue("cardTextEnabled", this.checked);
-			});
-			advContentArea.appendChild(cardTextLabel);
 			//建立 4列 × 2欄 的網格佈局
 			const buttonGrid02 = document.createElement("div");
 			buttonGrid02.setAttribute("style", "display:grid; grid-template-columns: 1fr 1fr; gap:4px; width:100%; box-sizing:border-box;");
@@ -1679,7 +1671,6 @@ function onGameApp() {
 	let _autoAPBPEnabled = GM_getValue("isAutoApBpRefillEnabled", false);//自動補給AP|BP
 	let _autoReloadEnabled = GM_getValue("isAutoReloadEnabled", false);//自動戰鬥時閒置重整(防卡)
 	const _autoReloadWaiting = 16000;//閒置時間(毫秒)
-	let _cardTextEnabled = GM_getValue("cardTextEnabled", false);//卡片(飾品,武器,角色)顯示文字資訊
 	let _logPacketsEnabled = GM_getValue("isPacketLoggingEnabled", false);//輸出傳輸資訊
 	let _connectingVisible = GM_getValue("hideConnectingScreen", false);//Connecting畫面
 	let _errorPopupVisible = GM_getValue("disableErrorPopups", false);//Error彈窗
@@ -1840,8 +1831,8 @@ function onGameApp() {
 					try {
 						await exportAllHimeData();//取得所有神姬資料
 						await exportAllSummonData();//取得所有幻獸資料
-						await exportAllWeaponData();///取得所有武器資料
 						await exportAllSoulData();//取得所有英靈資料
+						await exportAllWeaponData();///取得所有武器資料
 					} catch (error) {
 						debugLog("getAllData: " + error);
 					}
@@ -1936,9 +1927,6 @@ function onGameApp() {
 			});
 			GM_addValueChangeListener("isAutoReloadEnabled", function(key, oldValue, newValue, remote) {
 				_autoReloadEnabled = newValue;//自動戰鬥時閒置重整(防卡)
-			});
-			GM_addValueChangeListener("cardTextEnabled", function(key, oldValue, newValue, remote) {
-				_cardTextEnabled = newValue;//顯示飾品文字資訊
 			});
 			GM_addValueChangeListener("isPacketLoggingEnabled", function(key, oldValue, newValue, remote) {
 				_logPacketsEnabled = newValue;//Http傳輸資訊
@@ -2580,74 +2568,7 @@ function onGameApp() {
 						node.setVisible(false);
 					}
 				});
-				//處理文字標籤
-				if (_cardTextEnabled && record.sub_effects !== undefined) {
-					record.sub_effects.forEach((sub_effect, num) => {
-						const labelName = `status_label_${num}`;
-						let statusLabelNode = this.uiNode.seekWidgetByName(labelName);
-						if (!statusLabelNode) {
-							let position = 0;
-							switch (num) {
-								case 0: position=100;break;
-								case 1: position=64;break;
-								case 2: position=28;break;
-							}
-							//新增文字標籤
-							statusLabelNode = new ccui.Text();
-							statusLabelNode.setName(labelName);
-							statusLabelNode.setPosition(0, position);
-							statusLabelNode.setAnchorPoint(0, 0);
-							statusLabelNode.setFontSize(13);
-							statusLabelNode.setFontName("GameFont");
-							statusLabelNode.ignoreContentAdaptWithSize(false);
-							statusLabelNode.setContentSize(cc.size(150, 32));
-							statusLabelNode.setTextHorizontalAlignment(0);
-							statusLabelNode.setTextVerticalAlignment(1);
-							statusLabelNode.setTextColor(cc.color(255, 255, 255, 255));
-							//背景色
-							const bgLayout = new ccui.Layout();
-							bgLayout.setBackGroundColorType(1);//純色
-							bgLayout.setBackGroundColor(cc.color(0, 0, 0));//黑
-							bgLayout.setBackGroundColorOpacity(200);//半透明
-							bgLayout.setContentSize(cc.size(150, 32));
-							bgLayout.setAnchorPoint(0, 0);
-							bgLayout.setPosition(0, 0);
-							bgLayout.setLocalZOrder(-1);
-							statusLabelNode.addChild(bgLayout);
-							this.uiNode.addChild(statusLabelNode);
-						}
-						//顯示飾品效果
-						statusLabelNode.setVisible(true);
-						const slotPrefix = sub_effect.slot_number ? `[${sub_effect.slot_number}]` : "";
-						statusLabelNode.setText(`${sub_effect.effect_rate}%${sub_effect.name}${slotPrefix}`);
-					});
-				}
 			}
-			//武器額外文字資訊顯示
-			// const origWeaponCardSetData = kh.CoreCardWeaponUI.prototype.setData;
-			// kh.CoreCardWeaponUI.prototype.setDataRaw = kh.CoreCardWeaponUI.prototype.setData;
-			// kh.CoreCardWeaponUI.prototype.setData = function(record, sortCondition, componentName) {
-			// 	origWeaponCardSetData.apply(this, arguments);
-			// 	if (this._currentActionName !== this.ACTION_NAME_FULL) return;
-			//  //debugLog(JSON.stringify(record, null, 2));
-			// }
-			//神姬額外文字資訊顯示
-			// const origCharacterCardSetData = kh.CoreCardCharacterUI.prototype.setData;
-			// kh.CoreCardCharacterUI.prototype.setDataRaw = kh.CoreCardCharacterUI.prototype.setData;
-			// kh.CoreCardCharacterUI.prototype.setData = function(record, sortCondition, componentName) {
-			//  origCharacterCardSetData.apply(this, arguments);
-			//	if (this._currentActionName !== this.ACTION_NAME_FULL) return;
-			//	//debugLog(JSON.stringify(record, null, 2));
-			// }
-			//幻獸額外文字資訊顯示
-			// const origSummonCardSetData = kh.CoreCardSummonUI.prototype.setData;
-			// kh.CoreCardSummonUI.prototype.setDataRaw = kh.CoreCardSummonUI.prototype.setData;
-			// kh.CoreCardSummonUI.prototype.setData = function(record, sortCondition, componentName) {
-			//  origSummonCardSetData.apply(this, arguments);
-			//  if (this._currentActionName !== this.ACTION_NAME_FULL) return;
-			//	//debugLog(JSON.stringify(record, null, 2));
-			// }
-
 			setTimeout(initCacheAndDelay, 1200);
 			debugLog('initialization part4 starting...');
 		} catch(error) {
@@ -4394,6 +4315,17 @@ function onGameApp() {
 				const router = kh.createInstance("router");
 				if (router) router.navigate("mypage/my_001");
 			}
+			if (_raidEventID === 0) {
+				//取得活動ID
+				const eventRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_banners/event_on_period`}, "unblock");
+				const currentEvent = eventRes.body.data.find((e) => "raid_event" === e.event_type);
+				if (currentEvent) {
+					_raidEventID = currentEvent.event_id;
+					debugLog("event id: " + _raidEventID);
+				} else {
+					debugLog("no event id.");
+				}
+			}
 			robotFreeManTrigger();
 		} catch (error) {
 			debugLog("robotFreeManStart: " + error);
@@ -4424,11 +4356,26 @@ function onGameApp() {
 			//快速救援
 			await speedRescueRaid();
 			//尋找公開的Raid
-			if (await joinPublicRaids(false)) {
-				debugLog("get a quest...");
-				return false;
-			}				
-			//主線關卡章節
+			if (await joinPublicRaids(false)) {return false;}
+			//隨機打
+			if (_raidEventID === 0) {
+				await runMainQuest();//主線關卡
+			} else {
+				//40% 打raid event，60% 打主線關卡
+				if (Math.random() < 0.4) {
+					await runRaidEvent();//raid event
+				} else {
+					await runMainQuest();//主線關卡
+				}
+			}
+		} catch (error) {
+			debugLog("robotFreeManTrigger: " + error);
+		} finally {
+			_isFreeManSearching = false;
+		}
+		return true;
+		//執行主線關卡
+		async function runMainQuest() {
 			const questType = "main";
 			const mainQuestID = 64;
 			const episodeNum = 2;
@@ -4451,16 +4398,59 @@ function onGameApp() {
 			}
 			//進入幻獸點關卡
 			if (await launchRaidBattle(currentQuest)) {
-				return false;
+				return true;
 			} else {
 				debugLog("launch fail, give up");
+				return false;
 			}
-		} catch (error) {
-			debugLog("robotFreeManTrigger: " + error);
-		} finally {
-			_isFreeManSearching = false;
 		}
-		return true;
+		//執行Raid event
+		async function runRaidEvent() {
+			//取得活動道具數量
+			const questRes = await _httpClient.get({
+				url: `${kh.env.urlRoot}/a_quests`,
+				json: { type: "event", "event_id": _raidEventID}
+			}, "unblock");
+			if (!questRes) {debugLog("no respone.");return false;}
+			if (!questRes.body) {debugLog("no respone.");return false;}
+			if (!questRes.body.data) {debugLog("no respone.");return false;}
+			const questWithItems = questRes.body.data.find(q => q.required_item && q.required_item.length > 0);
+			const itemNum = questWithItems ? questWithItems.required_item[0].possession_amount : 0;
+			let targetQuestId = null;
+			//道具多就刷ragnarok,否則刷expert
+			if (itemNum > 200) {
+				const ragnarokQuest = questRes.body.data.find((q) => q.difficulty === "ragnarok");
+				if (ragnarokQuest) targetQuestId = ragnarokQuest.quest_id;
+			} else {
+				const expertQuest = questRes.body.data.find((q) => q.difficulty === "expert");
+				if (expertQuest) targetQuestId = expertQuest.quest_id;
+			}
+			if (!targetQuestId) {debugLog("no quest Id.");return false;}
+			const raidEventType = "event_raid";
+			//取得關卡之前的資訊
+			const questPrevInfo = await getQuestPrevious(targetQuestId, raidEventType);
+			const prevPartyId = questPrevInfo.prevPartyId;
+			const prevSummonElement = questPrevInfo.prevSummonElement;
+			//取得支援幻獸
+			const supportSummonId = await getSupportSummonId(prevSummonElement);
+			//產生入場資訊
+			const currentQuest = {
+				url: `${kh.env.urlRoot}/a_quests/${targetQuestId}/start`,
+				json: {
+					type: raidEventType,
+					a_party_id: prevPartyId,
+					support_a_summon_id: supportSummonId,
+					support_summon_tab_element_type: prevSummonElement,
+				}
+			}
+			//進入關卡
+			if (await launchRaidBattle(currentQuest)) {
+				return true;
+			} else {
+				debugLog("launch fail, give up");
+				return false;
+			}
+		}
 	}
 	/**
 	 * @description 每日要執行的動作集合
@@ -5778,7 +5768,7 @@ function onGameApp() {
 		try {
 			if (!_httpClient) { debugLog("HTTP connection not initialized"); return; }
 			debugLog("execute luck gacha");
-			const luckCategoriesId = 1000070;//每期加10
+			const luckCategoriesId = 1000080;//每期加10
 			const cat1Res = await _httpClient.get({url: `${kh.env.urlRoot}/gacha_categories`}, "unblock");
 			const hasTargetCategory = cat1Res.body.tabs.some(tab => 
 				tab.banners.some(banner => banner.category_id === luckCategoriesId)
@@ -6131,9 +6121,10 @@ function onGameApp() {
 			//100100 哀憐結晶(Crystal of Pity)
 			//100101 勇敢結晶(Crystal of Valor)
 			//100201 剎那水晶(Instant Crystal)
+			//100143 英氣儲存器
 			const raidShopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/19`}, "unblock");
 			if (raidShopRes?.body?.catalogs) {
-				const RAID_TARGET_IDS = [100001,100002,100003,100005,100099,100100,100101,100201];
+				const RAID_TARGET_IDS = [100001,100002,100003,100005,100099,100100,100101,100201,100143];
 				const allRaidProducts = raidShopRes.body.catalogs.flatMap(c => c.products);
 				const itemsToExchange = allRaidProducts.filter(p => 
 					RAID_TARGET_IDS.includes(p.product_id) && p.stock_info.amount > 0
@@ -6285,6 +6276,7 @@ function onGameApp() {
 			await reclaimWeapons();//還原武器
 			await reclaimSummons();//還原幻獸
 			await reclaimAccessories();//還原飾品
+			await reclaimDeviceacces();//還原終端
 		} catch (error) {
 			debugLog("executeItemReclamation: " + error);
 		}
@@ -6450,7 +6442,7 @@ function onGameApp() {
 			//懷錶 2001~2006
 			for (let pageIndex = 1; pageIndex <= 60; pageIndex++) {
 				try {
-					//求取得飾品清單
+					//取得飾品清單
 					const response = await _httpClient.get({
 						url: `${kh.env.urlRoot}/a_accessories/`,
 						json: {display_filter_name: "book_acce",page: pageIndex, per_page: 100000, panels_per_page: 18}
@@ -6526,7 +6518,7 @@ function onGameApp() {
 						});
 					}
 					await sleep(100);
-				}catch (error) {
+				} catch (error) {
 					debugLog("reclaimAccessories loop: " + error);
 					break;
 				}
@@ -6556,6 +6548,61 @@ function onGameApp() {
 			debugLog("reclaimAccessories OK");
 		} catch (error) {
 			debugLog("reclaimAccessories: " + error);
+		}
+	}
+	/**
+	 * @description 還原終端為材料與點數
+	 */
+
+	async function reclaimDeviceacces() {
+		try {
+			const targetDeviceacceIds = [];
+			for (let pageIndex = 1; pageIndex <= 60; pageIndex++) {
+				//取得終端清單
+				try {
+					const response = await _httpClient.get({
+						url: `${kh.env.urlRoot}/a_accessories/`,
+						json: {display_filter_name: "reduct_deviceacce", panels_per_page: 18, selectable_base_filter: "reductable", page: pageIndex, per_page:100000}
+					}, "unblock");
+					if (response && response.body && response.body.data) {
+						const deviceaccesList = response.body.data;
+						if (deviceaccesList.length === 0) break;
+						//篩選
+						deviceaccesList.forEach(item => {
+							if (item.is_equipped) return;
+							if (item.is_locked) return;
+							if (item.level > 1) return;
+
+							if (["1", "2"].includes(item.tier)) {
+								targetDeviceacceIds.push(item.a_accessory_id);
+								return;
+							}
+							//只留指定項
+						});
+					}
+					await sleep(100);
+				} catch (error) {
+					debugLog("reclaimDeviceacces loop: " + error);
+					break;
+				}
+			}
+			debugLog("deviceacces count: " + targetDeviceacceIds.length);
+			if (targetDeviceacceIds.length === 0) return;
+			//還原
+			while (targetDeviceacceIds.length > 0) {
+				const batch = targetDeviceacceIds.splice(0, 20);
+				await _httpClient.post({
+					url: `${kh.env.urlRoot}/a_accessories_reduct`,
+					json: {ids: batch}
+				}, "unblock");
+				if (targetDeviceacceIds.length > 0) {
+					debugLog("deviceacces count: " + targetDeviceacceIds.length);
+					await sleep(300);
+				}
+			}
+			debugLog("reclaimDeviceacces OK");
+		} catch (error) {
+			debugLog("reclaimDeviceacces: " + error);
 		}
 	}
 	/**
@@ -8344,7 +8391,9 @@ function onGameApp() {
 				if (_autoSummonEnabled) await battleAutoSummon();//幻獸攻擊
 				if (_questType === "raid") {
 					await battleSendHelp();//發送支援
-					if (_autoStampEnabled) await battleSendStamp();//傳送表情
+					if (_autoStampEnabled) {
+						await battleSendStamp();//傳送表情
+					}
 					await createRankingUI();
 				} else if (_questType === "raid_event") {
 					if (_autoStampEnabled) await battleSendStamp();//傳送表情
@@ -8535,11 +8584,13 @@ function onGameApp() {
 		}
 		//{神姬ID: {技能索引: 優先級} }
 		const CHARACTER_SKILL_PRIORITIES = {
+			5106: { 2: 70 },//ルー
 			5167: { 0: 64 },//[戦友想う刃]ルー
 			5230: { 2: 70 },//[決意の護衛者]ラー
 			5243: { 3: 44 },//[聖夜の約束]フレイヤ
 			5248: { 2: 70 },//[百花繚乱の領袖]バアル
 			5249: { 3: 70 },//[夢見る怠惰]アマナー
+			5271: { 2: 70 },//ルー[神化覚醒]
 			5277: { 1: 61 },//[極光の聖戦士]アテン
 			5281: { 2: 70 },//[未来に備えて]ジェフティ
 			5300: { 2: 80 },//[贈愛の爛漫]シャイターン
@@ -8568,6 +8619,9 @@ function onGameApp() {
 			9006: { 0: 61, 3: 80 },//アモン[神想真化]
 			9014: { 0: 61 }//ハデス[神想真化]
 		};
+		//{神姬ID: {技能索引: {能量增量,增量形式}} }
+		//const CHARACTER_SKILL_ENERGY = {
+		//};
 		const MELODY_BUFF_IDS = { red: 13848, green: 13849, yellow: 13850, blue: 13851 };//旋律狀態ID
 
 		let jobIndex = -1;//英靈索引
@@ -8579,6 +8633,8 @@ function onGameApp() {
 			totalMelodies: 0,//現在旋律數量
 			targetColors: ""//優先顏色
 		};
+		//Burst模式施放邏輯使用(賴光,赫爾托克,項羽)
+		//let isBurstJob = false;
 
 		const battleWorld = kh.createInstance("battleWorld");
 		if (!battleWorld) return;
