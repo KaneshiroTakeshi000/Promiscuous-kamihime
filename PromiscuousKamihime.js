@@ -8393,6 +8393,8 @@ function onGameApp() {
 					await battleSendHelp();//發送支援
 					if (_autoStampEnabled) {
 						await battleSendStamp();//傳送表情
+					} else if (_enemyLevel === 200) {
+						await battleSendStamp();//傳送表情
 					}
 					await createRankingUI();
 				} else if (_questType === "raid_event") {
@@ -8553,6 +8555,10 @@ function onGameApp() {
 				await battleReload();
 				_playerActionTime = currentTime;
 			}
+			//獸人完成檢查
+			if (_questType === "orc_quest") {
+				await simulateTouchByPath("Scene(C)/UIFrontLayer/Layer/touch_btn");
+			}
 		}
 		await updateRanking();//更新玩家排行
 	}
@@ -8580,6 +8586,7 @@ function onGameApp() {
 		//{英靈ID: {技能索引: 優先級} }
 		const SOUL_SKILL_PRIORITIES = {
 			43: { 0: 10, 1: 12, 2: 81, 3: 14 },//愛迪生
+			46: { 0: 10 },//項羽
 			50: { 0: 5, 1: 85, 2: 86, 4: 8 }//貝多芬
 		}
 		//{神姬ID: {技能索引: 優先級} }
@@ -8591,7 +8598,7 @@ function onGameApp() {
 			5248: { 2: 70 },//[百花繚乱の領袖]バアル
 			5249: { 3: 70 },//[夢見る怠惰]アマナー
 			5271: { 2: 70 },//ルー[神化覚醒]
-			5277: { 1: 61 },//[極光の聖戦士]アテン
+			5277: { 1: 61, 2: 66 },//[極光の聖戦士]アテン
 			5281: { 2: 70 },//[未来に備えて]ジェフティ
 			5300: { 2: 80 },//[贈愛の爛漫]シャイターン
 			5311: { 2: 70 },//[仔猫奮迅]キャスパリーグ
@@ -8718,10 +8725,8 @@ function onGameApp() {
 						//貝多芬戰術
 						if (beethovenState.isActive && customPriority < 70) {
 							if (beethovenState.targetColors === skillColor) {
-								const priorityAdjustments = { green: -20, yellow: -30, blue: -40, red: -50 };
-								if (skillColor in priorityAdjustments) {
-									calculatedPriority += priorityAdjustments[skillColor];
-								}
+								//使優先級提昇至20~29區間
+								calculatedPriority = (calculatedPriority % 10) + 20;
 							}
 						}
 					}
@@ -9347,6 +9352,9 @@ function onGameApp() {
 					case "epic"://史詩關卡
 						if (await launchRaidBattleAgain()) {return;}
 						await simulateTouchByPath("Scene(C)/contentLayer/Scene/window_gray/btn_retry");
+						break;
+					case "orc_quest"://獸人
+						if (await launchRaidBattleAgain()) {return;}
 						break;
 					default:
 						break;
