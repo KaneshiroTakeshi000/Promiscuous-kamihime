@@ -1211,23 +1211,40 @@ function onGameFrame() {
 			};
 			pubPartLabel.appendChild(pubPartInput);
 			robotPublicArea.appendChild(pubPartLabel);
-			//等級門檻
-			const pubLvlLabel = document.createElement("label");
-			pubLvlLabel.setAttribute("style", rowStyle);
-			pubLvlLabel.appendChild(document.createTextNode("大於等級"));
-			const pubLvlInput = document.createElement("input");
-			pubLvlInput.type = "number";
-			pubLvlInput.setAttribute("style", selectStyle);
-			pubLvlInput.style.padding = "2px 0px";
-			pubLvlInput.value = GM_getValue("publicRaidEnemyLevel", 109);
-			applySelectHoverEffect(pubLvlInput);
-			pubLvlInput.onchange = function() {
+			//最小等級門檻
+			const pubLvlMinLabel = document.createElement("label");
+			pubLvlMinLabel.setAttribute("style", rowStyle);
+			pubLvlMinLabel.appendChild(document.createTextNode("大於等級"));
+			const pubLvlMinInput = document.createElement("input");
+			pubLvlMinInput.type = "number";
+			pubLvlMinInput.setAttribute("style", selectStyle);
+			pubLvlMinInput.style.padding = "2px 0px";
+			pubLvlMinInput.value = GM_getValue("publicRaidEnemyLevelMin", 109);
+			applySelectHoverEffect(pubLvlMinInput);
+			pubLvlMinInput.onchange = function() {
 				let val = parseInt(this.value, 10);
 				if (isNaN(val)) val = 110;
-				GM_setValue("publicRaidEnemyLevel", val);
+				GM_setValue("publicRaidEnemyLevelMin", val);
 			};
-			pubLvlLabel.appendChild(pubLvlInput);
-			robotPublicArea.appendChild(pubLvlLabel);
+			pubLvlMinLabel.appendChild(pubLvlMinInput);
+			robotPublicArea.appendChild(pubLvlMinLabel);
+			//最大等級門檻
+			const pubLvlMaxLabel = document.createElement("label");
+			pubLvlMaxLabel.setAttribute("style", rowStyle);
+			pubLvlMaxLabel.appendChild(document.createTextNode("小於等級"));
+			const pubLvlMaxInput = document.createElement("input");
+			pubLvlMaxInput.type = "number";
+			pubLvlMaxInput.setAttribute("style", selectStyle);
+			pubLvlMaxInput.style.padding = "2px 0px";
+			pubLvlMaxInput.value = GM_getValue("publicRaidEnemyLevelMax", 200);
+			applySelectHoverEffect(pubLvlMaxInput);
+			pubLvlMaxInput.onchange = function() {
+				let val = parseInt(this.value, 10);
+				if (isNaN(val)) val = 110;
+				GM_setValue("publicRaidEnemyLevelMax", val);
+			};
+			pubLvlMaxLabel.appendChild(pubLvlMaxInput);
+			robotPublicArea.appendChild(pubLvlMaxLabel);
 
 			robotPanel.appendChild(robotPublicArea);
 
@@ -1703,7 +1720,7 @@ function onGameApp() {
 	let _lastBattleTimestamp = 0;//記錄上次戰鬥時更新的時間戳記
 	//let _lastLoggedDamage = "";//記錄上次印出的傷害訊息,防重覆訊息
 	let _isBattlingExecuting = false;//執行鎖，防止非同步重疊
-	let _battlingInstanceCount = 0;//偵測用計數器
+	let _battlingInstanceCount = 0;//偵測戰鬥中計數器
 
 	//daily robot資料區
 	let _isDailySearching = false;//避免重復執行
@@ -1717,7 +1734,8 @@ function onGameApp() {
 	let _isPublicRaidSearching = false;//避免重復執行
 	let _publicRaidEnemyHp = GM_getValue("publicRaidEnemyHp", 30.0);//必須高於此血量(%)
 	let _publicRaidParticipants = GM_getValue("publicRaidParticipants", 8);//必須小於此人數
-	let _publicRaidEnemyLevel = GM_getValue("publicRaidEnemyLevel", 109);//必須大於此等級
+	let _publicRaidEnemyLevelMin = GM_getValue("publicRaidEnemyLevelMin", 109);//必須大於此等級
+	let _publicRaidEnemyLevelMax = GM_getValue("publicRaidEnemyLevelMax", 200);//必須小於此等級
 	let _publicRaidType = GM_getValue("publicRaidType", 0);//0:一般Raid優先, 1:事件Raid優先
 
 	//rescue raid robot 與 my raid robot 資料區
@@ -1970,8 +1988,11 @@ function onGameApp() {
 			GM_addValueChangeListener("publicRaidParticipants", function(key, oldValue, newValue, remote) {
 				_publicRaidParticipants = newValue;//人數閥值
 			});
-			GM_addValueChangeListener("publicRaidEnemyLevel", function(key, oldValue, newValue, remote) {
-				_publicRaidEnemyLevel = newValue;//等級閥值
+			GM_addValueChangeListener("publicRaidEnemyLevelMin", function(key, oldValue, newValue, remote) {
+				_publicRaidEnemyLevelMin = newValue;//等級閥值
+			});
+			GM_addValueChangeListener("publicRaidEnemyLevelMax", function(key, oldValue, newValue, remote) {
+				_publicRaidEnemyLevelMax = newValue;//等級閥值
 			});
 		} catch (error) {
 			debugLog("init:", error);
@@ -3425,10 +3446,56 @@ function onGameApp() {
 
 			const rescueId = await battleGetRescueId();//救援碼
 			if (rescueId) {
-				sendStringToFirebase(rescueId);
+			 	sendStringToFirebase(rescueId);
 			} else {
-				debugLog("no rescue id");
+			 	debugLog("no rescue id");
 			}
+
+			//獸人活動
+			// const eventRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_banners/event_on_period`}, "unblock");
+			// const currentEvent = eventRes.body.data.find((e) => "rush_event" === e.event_type);
+			// const orcEventID = currentEvent?.event_id;
+			// if (orcEventID) {
+			// 	debugLog("orc event id: " + orcEventID);
+			// 	//道具數量
+			// 	const treasures = await _httpClient.get({url: `${kh.env.urlRoot}/a_events/rush_event/${orcEventID}`}, "unblock");
+			// 	let sticks = treasures?.body?.event_treasures?.[0]?.amount ?? 0;
+			// 	//獸人商店
+			// 	const orcShopRes = await _httpClient.get({url: `${kh.env.urlRoot}/treasures`, json: {event_id:orcEventID}}, "unblock");
+			// 	if (orcShopRes?.body?.data) {
+			// 		//944	(1/10)SSR確定轉蛋券
+			// 		//11	豪華轉蛋券
+			// 		//13	神姬解放武器轉蛋券
+			// 		//4001	幻魔核心
+			// 		//10002	幻獸寶珠
+			// 		//40154	英氣儲存器
+			// 		//126	神龍眼碎片
+			// 		//6010	蒼銀果實格洛斯
+			// 		//6101	奧利哈鋼
+			// 		//1		魔水晶
+			// 		//3		魂玉
+			// 		const targetItemIds = [1, 944, 11, 13, 4001, 10002, 40154, 126, 6010, 3];
+			// 		for (const targetItemId of targetItemIds) {
+			// 			const targetItem = orcShopRes.body.data.find((item) => item.game_item?.item_id === targetItemId);
+			// 			if (!targetItem) continue;
+			// 			const requiredSticks = targetItem.exchange_items?.[0]?.required_num || Infinity;
+			// 			const stockLimit = targetItem.stock_info.has 
+			// 				? parseInt(targetItem.stock_info.amount, 10) 
+			// 				: Infinity;
+			// 			const affordableNum = Math.floor(sticks / requiredSticks);
+			// 			const buyNum = Math.min(affordableNum, stockLimit);
+			// 			if (buyNum > 0) {
+			// 				await _httpClient.post({
+			// 					url: `${kh.env.urlRoot}/shop/exchange`, 
+			// 					json: {shop_treasure_id: targetItem.shop_treasure_id,shop_type: "event", event_id: orcEventID, num: buyNum}
+			// 				}, "unblock");
+			// 				sticks -= (buyNum * requiredSticks);
+			// 			}
+			// 		}
+			// 		//兌換
+			// 		//await _httpClient.post({url: `${kh.env.urlRoot}/shop/exchange`, json: {shop_treasure_id:4031124,shop_type:"event",event_id:orcEventID,num:1}}, "unblock");
+			// 	}
+			// }
 
 			// //個人留言板
 			// const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_greets`,json: {a_player_id: "me"}}, "unblock");
@@ -4354,15 +4421,15 @@ function onGameApp() {
 				}
 			}
 			//快速救援
-			await speedRescueRaid();
+			//await speedRescueRaid();
 			//尋找公開的Raid
 			if (await joinPublicRaids(false)) {return false;}
 			//隨機打
 			if (_raidEventID === 0) {
 				await runMainQuest();//主線關卡
 			} else {
-				//40% 打raid event，60% 打主線關卡
-				if (Math.random() < 0.4) {
+				//60% 打raid event，40% 打主線關卡
+				if (Math.random() < 0.6) {
 					await runRaidEvent();//raid event
 				} else {
 					await runMainQuest();//主線關卡
@@ -5327,7 +5394,8 @@ function onGameApp() {
 				if (a.is_own_raid) return false;
 				if (a.is_joined) return false;//排除已進入過的關卡
 				if ((a.enemy_hp / a.enemy_max) <= (_publicRaidEnemyHp * 0.01)) return false;//排除血量小於30%
-				if (a.enemy_level <= _publicRaidEnemyLevel) return false;//排除等級
+				if (a.enemy_level <= _publicRaidEnemyLevelMin) return false;//排除等級
+				if (a.enemy_level >= _publicRaidEnemyLevelMax) return false;//排除等級
 				if (a.participants >= _publicRaidParticipants) return false;//排除人數
 				return true;
 			}).sort((a, b) => {
@@ -6244,6 +6312,7 @@ function onGameApp() {
 				debugLog("No items available for exchange at this time.");
 				return;
 			}
+			//逐個兌換
 			for (const item of purchaseQueue) {
 				let keepPurchasing = true;
 				while (keepPurchasing) {
@@ -7360,19 +7429,20 @@ function onGameApp() {
 		 */
 		function transformSummonnData_cht(source) {
 			if (!source) return null;
+			const finalStatus = source.status?.final;
 			return {
 				summon_id: source.summon_id ?? "",//查詢用ID
 				name_cht: source.name ?? "",//名稱
 				rarity: source.rare ?? "",//稀有度
 				element_type: source.element_type ?? 0,//元素屬性
 				can_final_evolve: source.can_final_evolve ?? false,//終突
-				attack_name_cht: source.status.final.attack.name ?? "",//招喚攻擊名稱
-				attack_description_cht: source.status.final.attack.description ?? "",//招喚攻擊描述
-				attack_turn: source.status.final.attack.turn ?? 0,//招喚攻擊冷卻回合
-				main_effect_name_cht: source.status.final.summon_main_effect.name ?? "",//主幻效果名稱
-				main_effect_description_cht: source.status.final.summon_main_effect.description ?? "",//主幻效果描述
-				sub_effect_name_cht: source.status.final.summon_sub_effect.name ?? "",//副幻效果名稱
-				sub_effect_description_cht: source.status.final.summon_sub_effect.description ?? ""//副幻效果描述
+				attack_name_cht: finalStatus?.attack?.name ?? "",//招喚攻擊名稱
+				attack_description_cht: finalStatus?.attack?.description ?? "",//招喚攻擊描述
+				attack_turn: finalStatus?.attack?.turn ?? 0,//招喚攻擊冷卻回合
+				main_effect_name_cht: finalStatus?.summon_main_effect?.[0]?.name ?? "",//主幻效果名稱
+				main_effect_description_cht: finalStatus?.summon_main_effect?.[0]?.description ?? "",//主幻效果描述
+				sub_effect_name_cht: finalStatus?.summon_sub_effect?.[0]?.name ?? "",//副幻效果名稱
+				sub_effect_description_cht: finalStatus?.summon_sub_effect?.[0]?.description ?? ""//副幻效果描述
 			};
 		}
 		/**
@@ -7380,19 +7450,20 @@ function onGameApp() {
 		 */
 		function transformSummonnData_en(source) {
 			if (!source) return null;
+			const finalStatus = source.status?.final;
 			return {
 				summon_id: source.summon_id ?? "",//查詢用ID
 				name_en: source.name ?? "",//名稱
 				rarity: source.rare ?? "",//稀有度
 				element_type: source.element_type ?? 0,//元素屬性
 				can_final_evolve: source.can_final_evolve ?? false,//終突
-				attack_name_en: source.status.final.attack.name ?? "",//招喚攻擊名稱
-				attack_description_en: source.status.final.attack.description ?? "",//招喚攻擊描述
-				attack_turn: source.status.final.attack.turn ?? 0,//招喚攻擊冷卻回合
-				main_effect_name_en: source.status.final.summon_main_effect.name ?? "",//主幻效果名稱
-				main_effect_description_en: source.status.final.summon_main_effect.description ?? "",//主幻效果描述
-				sub_effect_name_en: source.status.final.summon_sub_effect.name ?? "",//副幻效果名稱
-				sub_effect_description_en: source.status.final.summon_sub_effect.description ?? ""//副幻效果描述
+				attack_name_en: finalStatus?.attack?.name ?? "",//招喚攻擊名稱
+				attack_description_en: finalStatus?.attack?.description ?? "",//招喚攻擊描述
+				attack_turn: finalStatus?.attack?.turn ?? 0,//招喚攻擊冷卻回合
+				main_effect_name_en: finalStatus?.summon_main_effect?.[0]?.name ?? "",//主幻效果名稱
+				main_effect_description_en: finalStatus?.summon_main_effect?.[0]?.description ?? "",//主幻效果描述
+				sub_effect_name_en: finalStatus?.summon_sub_effect?.[0]?.name ?? "",//副幻效果名稱
+				sub_effect_description_en: finalStatus?.summon_sub_effect?.[0]?.description ?? ""//副幻效果描述
 			};
 		}
 		/**
@@ -7400,19 +7471,20 @@ function onGameApp() {
 		 */
 		function transformSummonnData_jp(source) {
 			if (!source) return null;
+			const finalStatus = source.status?.final;
 			return {
 				summon_id: source.summon_id ?? "",//查詢用ID
-				name_jpn: source.name ?? "",//名稱
+				name_jp: source.name ?? "",//名稱
 				rarity: source.rare ?? "",//稀有度
 				element_type: source.element_type ?? 0,//元素屬性
 				can_final_evolve: source.can_final_evolve ?? false,//終突
-				attack_name_jp: source.status.final.attack.name ?? "",//招喚攻擊名稱
-				attack_description_jp: source.status.final.attack.description ?? "",//招喚攻擊描述
-				attack_turn: source.status.final.attack.turn ?? 0,//招喚攻擊冷卻回合
-				main_effect_name_jp: source.status.final.summon_main_effect.name ?? "",//主幻效果名稱
-				main_effect_description_jp: source.status.final.summon_main_effect.description ?? "",//主幻效果描述
-				sub_effect_name_jp: source.status.final.summon_sub_effect.name ?? "",//副幻效果名稱
-				sub_effect_description_jp: source.status.final.summon_sub_effect.description ?? ""//副幻效果描述
+				attack_name_jp: finalStatus?.attack?.name ?? "",//招喚攻擊名稱
+				attack_description_jp: finalStatus?.attack?.description ?? "",//招喚攻擊描述
+				attack_turn: finalStatus?.attack?.turn ?? 0,//招喚攻擊冷卻回合
+				main_effect_name_jp: finalStatus?.summon_main_effect?.[0]?.name ?? "",//主幻效果名稱
+				main_effect_description_jp: finalStatus?.summon_main_effect?.[0]?.description ?? "",//主幻效果描述
+				sub_effect_name_jp: finalStatus?.summon_sub_effect?.[0]?.name ?? "",//副幻效果名稱
+				sub_effect_description_jp: finalStatus?.summon_sub_effect?.[0]?.description ?? ""//副幻效果描述
 			};
 		}
 	}
@@ -7480,22 +7552,25 @@ function onGameApp() {
 			return {
 				job_id: source.job_id ?? "",//查詢用ID
 				name_cht: source.name ?? "",//名稱
+				personality: source.type ?? "",//類型
+				rank: source.rank ?? "",//階級
+				rank_type: source.rank_type ?? "",//階級
 				weapon_favorite_1: source.proper_weapon?.[0] ?? "",//得意武器1
 				weapon_favorite_2: source.proper_weapon?.[1] ?? "",//得意武器2
 				burst_name_cht: source.burst.name ?? "",//burst名稱
 				burst_effect_cht: source.burst.description ?? "",//burst描述
-				ability_1_name_cht : source.abilities?.[0]?.name ?? "",//1技名稱
-				ability_1_effect_cht : source.abilities?.[0]?.description ?? "",//1技描述
-				ability_1_color : source.abilities?.[0]?.category ?? "",//1技顏色
-				ability_1_cooldown: source.abilities?.[0]?.recast ?? 0,//1技冷卻回合
-				ability_2_name_cht : source.abilities?.[1]?.name ?? "",//2技名稱
-				ability_2_effect_cht : source.abilities?.[1]?.description ?? "",//2技描述
-				ability_2_color : source.abilities?.[1]?.category ?? "",//2技顏色
-				ability_2_cooldown: source.abilities?.[1]?.recast ?? 0,//2技冷卻回合
-				ability_3_name_cht : source.abilities?.[2]?.name ?? "",//3技名稱
-				ability_3_effect_cht : source.abilities?.[2]?.description ?? "",//3技描述
-				ability_3_color : source.abilities?.[2]?.category ?? "",//3技顏色
-				ability_3_cooldown: source.abilities?.[2]?.recast ?? 0,//3技冷卻回合
+				ability_1_name_cht : source.abilities?.[0]?.[0]?.name ?? "",//1技名稱
+				ability_1_effect_cht : source.abilities?.[0]?.[0]?.description ?? "",//1技描述
+				ability_1_color : source.abilities?.[0]?.[0]?.category ?? "",//1技顏色
+				ability_1_cooldown: source.abilities?.[0]?.[0]?.recast ?? 0,//1技冷卻回合
+				ability_2_name_cht : source.abilities?.[1]?.[0]?.name ?? "",//2技名稱
+				ability_2_effect_cht : source.abilities?.[1]?.[0]?.description ?? "",//2技描述
+				ability_2_color : source.abilities?.[1]?.[0]?.category ?? "",//2技顏色
+				ability_2_cooldown: source.abilities?.[1]?.[0]?.recast ?? 0,//2技冷卻回合
+				ability_3_name_cht : source.abilities?.[2]?.[0]?.name ?? "",//3技名稱
+				ability_3_effect_cht : source.abilities?.[2]?.[0]?.description ?? "",//3技描述
+				ability_3_color : source.abilities?.[2]?.[0]?.category ?? "",//3技顏色
+				ability_3_cooldown: source.abilities?.[2]?.[0]?.recast ?? 0,//3技冷卻回合
 				assist_1_name_cht : source.assists?.[0]?.name ?? "",//被動1名稱
 				assist_1_effect_cht : source.assists?.[0]?.description ?? "",//被動1說明
 				assist_2_name_cht : source.assists?.[1]?.name ?? "",//被動2名稱
@@ -7512,22 +7587,25 @@ function onGameApp() {
 			return {
 				job_id: source.job_id ?? "",//查詢用ID
 				name_en: source.name ?? "",//名稱
+				personality: source.type ?? "",//類型
+				rank: source.rank ?? "",//階級
+				rank_type: source.rank_type ?? "",//階級
 				weapon_favorite_1: source.proper_weapon?.[0] ?? "",//得意武器1
 				weapon_favorite_2: source.proper_weapon?.[1] ?? "",//得意武器2
 				burst_name_en: source.burst.name ?? "",//burst名稱
 				burst_effect_en: source.burst.description ?? "",//burst描述
-				ability_1_name_en : source.abilities?.[0]?.name ?? "",//1技名稱
-				ability_1_effect_en : source.abilities?.[0]?.description ?? "",//1技描述
-				ability_1_color : source.abilities?.[0]?.category ?? "",//1技顏色
-				ability_1_cooldown: source.abilities?.[0]?.recast ?? 0,//1技冷卻回合
-				ability_2_name_en : source.abilities?.[1]?.name ?? "",//2技名稱
-				ability_2_effect_en : source.abilities?.[1]?.description ?? "",//2技描述
-				ability_2_color : source.abilities?.[1]?.category ?? "",//2技顏色
-				ability_2_cooldown: source.abilities?.[1]?.recast ?? 0,//2技冷卻回合
-				ability_3_name_en : source.abilities?.[2]?.name ?? "",//3技名稱
-				ability_3_effect_en : source.abilities?.[2]?.description ?? "",//3技描述
-				ability_3_color : source.abilities?.[2]?.category ?? "",//3技顏色
-				ability_3_cooldown: source.abilities?.[2]?.recast ?? 0,//3技冷卻回合
+				ability_1_name_en : source.abilities?.[0]?.[0]?.name ?? "",//1技名稱
+				ability_1_effect_en : source.abilities?.[0]?.[0]?.description ?? "",//1技描述
+				ability_1_color : source.abilities?.[0]?.[0]?.category ?? "",//1技顏色
+				ability_1_cooldown: source.abilities?.[0]?.[0]?.recast ?? 0,//1技冷卻回合
+				ability_2_name_en : source.abilities?.[1]?.[0]?.name ?? "",//2技名稱
+				ability_2_effect_en : source.abilities?.[1]?.[0]?.description ?? "",//2技描述
+				ability_2_color : source.abilities?.[1]?.[0]?.category ?? "",//2技顏色
+				ability_2_cooldown: source.abilities?.[1]?.[0]?.recast ?? 0,//2技冷卻回合
+				ability_3_name_en : source.abilities?.[2]?.[0]?.name ?? "",//3技名稱
+				ability_3_effect_en : source.abilities?.[2]?.[0]?.description ?? "",//3技描述
+				ability_3_color : source.abilities?.[2]?.[0]?.category ?? "",//3技顏色
+				ability_3_cooldown: source.abilities?.[2]?.[0]?.recast ?? 0,//3技冷卻回合
 				assist_1_name_en : source.assists?.[0]?.name ?? "",//被動1名稱
 				assist_1_effect_en : source.assists?.[0]?.description ?? "",//被動1說明
 				assist_2_name_en : source.assists?.[1]?.name ?? "",//被動2名稱
@@ -7544,22 +7622,25 @@ function onGameApp() {
 			return {
 				job_id: source.job_id ?? "",//查詢用ID
 				name_jp: source.name ?? "",//名稱
+				personality: source.type ?? "",//類型
+				rank: source.rank ?? "",//階級
+				rank_type: source.rank_type ?? "",//階級
 				weapon_favorite_1: source.proper_weapon?.[0] ?? "",//得意武器1
 				weapon_favorite_2: source.proper_weapon?.[1] ?? "",//得意武器2
 				burst_name_jp: source.burst.name ?? "",//burst名稱
 				burst_effect_jp: source.burst.description ?? "",//burst描述
-				ability_1_name_jp : source.abilities?.[0]?.name ?? "",//1技名稱
-				ability_1_effect_jp : source.abilities?.[0]?.description ?? "",//1技描述
-				ability_1_color : source.abilities?.[0]?.category ?? "",//1技顏色
-				ability_1_cooldown: source.abilities?.[0]?.recast ?? 0,//1技冷卻回合
-				ability_2_name_jp : source.abilities?.[1]?.name ?? "",//2技名稱
-				ability_2_effect_jp : source.abilities?.[1]?.description ?? "",//2技描述
-				ability_2_color : source.abilities?.[1]?.category ?? "",//2技顏色
-				ability_2_cooldown: source.abilities?.[1]?.recast ?? 0,//2技冷卻回合
-				ability_3_name_jp : source.abilities?.[2]?.name ?? "",//3技名稱
-				ability_3_effect_jp : source.abilities?.[2]?.description ?? "",//3技描述
-				ability_3_color : source.abilities?.[2]?.category ?? "",//3技顏色
-				ability_3_cooldown: source.abilities?.[2]?.recast ?? 0,//3技冷卻回合
+				ability_1_name_jp : source.abilities?.[0]?.[0]?.name ?? "",//1技名稱
+				ability_1_effect_jp : source.abilities?.[0]?.[0]?.description ?? "",//1技描述
+				ability_1_color : source.abilities?.[0]?.[0]?.category ?? "",//1技顏色
+				ability_1_cooldown: source.abilities?.[0]?.[0]?.recast ?? 0,//1技冷卻回合
+				ability_2_name_jp : source.abilities?.[1]?.[0]?.name ?? "",//2技名稱
+				ability_2_effect_jp : source.abilities?.[1]?.[0]?.description ?? "",//2技描述
+				ability_2_color : source.abilities?.[1]?.[0]?.category ?? "",//2技顏色
+				ability_2_cooldown: source.abilities?.[1]?.[0]?.recast ?? 0,//2技冷卻回合
+				ability_3_name_jp : source.abilities?.[2]?.[0]?.name ?? "",//3技名稱
+				ability_3_effect_jp : source.abilities?.[2]?.[0]?.description ?? "",//3技描述
+				ability_3_color : source.abilities?.[2]?.[0]?.category ?? "",//3技顏色
+				ability_3_cooldown: source.abilities?.[2]?.[0]?.recast ?? 0,//3技冷卻回合
 				assist_1_name_jp : source.assists?.[0]?.name ?? "",//被動1名稱
 				assist_1_effect_jp : source.assists?.[0]?.description ?? "",//被動1說明
 				assist_2_name_jp : source.assists?.[1]?.name ?? "",//被動2名稱
@@ -8626,22 +8707,20 @@ function onGameApp() {
 			9006: { 0: 61, 3: 80 },//アモン[神想真化]
 			9014: { 0: 61 }//ハデス[神想真化]
 		};
-		//{神姬ID: {技能索引: {能量增量,增量形式}} }
-		//const CHARACTER_SKILL_ENERGY = {
-		//};
-		const MELODY_BUFF_IDS = { red: 13848, green: 13849, yellow: 13850, blue: 13851 };//旋律狀態ID
-
 		let jobIndex = -1;//英靈索引
 		const queuedAbilities = [];//可使用的技能
 		//貝多芬模式的施放邏輯使用
+		const MELODY_BUFF_IDS = { red: 13848, green: 13849, yellow: 13850, blue: 13851 };//旋律狀態ID
 		const beethovenState = {
 			isActive: false,//啟用貝多芬模式
 			melodies: {red: 0, green: 0, yellow: 0, blue: 0},//目前旋律
 			totalMelodies: 0,//現在旋律數量
 			targetColors: ""//優先顏色
 		};
-		//Burst模式施放邏輯使用(賴光,赫爾托克,項羽)
-		//let isBurstJob = false;
+		//項羽模式
+		const warriorSpiritId = 13623;//士魂ID
+		let warriorSpiritLevel = 0;//士魂數量
+		let isXiangYu = false;//項羽模式
 
 		const battleWorld = kh.createInstance("battleWorld");
 		if (!battleWorld) return;
@@ -8650,13 +8729,14 @@ function onGameApp() {
 			if (battleWorld.bufferedInputController.getLength() > 0) return;
 			const enemyList = battleWorld.enemyList || [];
 			if (enemyList.length === 0) return;//沒敵人不作用
-			//尋找英靈並確認是否為貝多芬
+			//尋找英靈
 			const characterList = battleWorld.characterList || [];
 			for (let i = 0; i < characterList.length; i++) {
 				const character = characterList[i];
 				if (character && character.isJob) {
 					jobIndex=i;
 					if (character.id === 50) beethovenState.isActive = true;
+					if (character.id === 46) isXiangYu = true;
 					break;
 				}
 			} 
@@ -8691,6 +8771,8 @@ function onGameApp() {
 			if (beethovenState.isActive) {
 				updateBeethovenMelodyState();//取得貝多芬旋律數量
 				determineBeethovenTargetColors();//取得貝多芬戰術需要技能顏色
+			} else if (isXiangYu) {
+				updateXiangYuWarriorSpirit();//取得項羽士魂數量
 			}
 			//技能優先級分配
 			const abilityList = battleWorld.characterAbilityList;
@@ -8711,8 +8793,11 @@ function onGameApp() {
 					let calculatedPriority = getSkillPriority(character, skill);
 					// 決定優先級邏輯
 					if (character.isJob) {
-						//貝多芬本身技能不計入旋律計算
-						if (beethovenState.isActive) skillColor = "unknown";
+						if (beethovenState.isActive) {
+							skillColor = "unknown";//貝多芬本身技能不計入旋律計算
+						} else if (isXiangYu && skillIdx === 0 && warriorSpiritLevel > 8) {
+							continue;//項羽士魂足量時不使用1技,防過度燒血
+						}
 					} else {
 						//有特殊優先級的角色先套用
 						const customPriority = CHARACTER_SKILL_PRIORITIES[character.id]?.[skillIdx];
@@ -8722,10 +8807,9 @@ function onGameApp() {
 								calculatedPriority = SKILL_COLOR_PRIORITIES[skillColor] || 70;
 							}
 						}
-						//貝多芬戰術
+						//貝多芬戰術,使目標顏色優先級提昇至20~29區間
 						if (beethovenState.isActive && customPriority < 70) {
 							if (beethovenState.targetColors === skillColor) {
-								//使優先級提昇至20~29區間
 								calculatedPriority = (calculatedPriority % 10) + 20;
 							}
 						}
@@ -8775,11 +8859,11 @@ function onGameApp() {
 				}
 			}
 			//檢查能否Full Burst
-			// if (isFullBurst()) {
-			// 	await setBattleBurstState(true);
-			// } else {
-			// 	await setBattleBurstState(false);
-			// }
+			//f (isFullBurst()) {
+			//	await setBattleBurstState(true);
+			//} else {
+			//	await setBattleBurstState(false);
+			//}
 			//點擊攻擊按鍵
 			await battleWorld.battleUI.AttackButton.simulateAttack();
 		} catch(error) {
@@ -8834,8 +8918,8 @@ function onGameApp() {
 						targetChara = characterList[targetIndex];//取得目標角色
 					}
 					try {
-						const bufferedInput = kh.createInstance("AbilityBufferedInput", [character, abilityPos, attackTargetPos, targetChara]);
 						//排入駐列施放技能
+						const bufferedInput = kh.createInstance("AbilityBufferedInput", [character, abilityPos, attackTargetPos, targetChara]);
 						await bufferedInput.execute();
 						//不排入駐列直接施放技能
 						//await battleWorld._useAbility(bufferedInput._character, bufferedInput._abilityPos, bufferedInput._attackTargetPos, bufferedInput._abilityTarget);
@@ -8966,6 +9050,25 @@ function onGameApp() {
 				debugLog(`evaluatePotionNeeds Exception: ${error.message || error}`);
 			}
 			return status;
+		}
+		/**
+		 * @description 取得項羽身上的士魂數量
+		 */
+		function updateXiangYuWarriorSpirit() {
+			try {
+				warriorSpiritLevel = 0;
+				const members = battleWorld?.battleStatus?._partyMembers;
+				const xiangYuStatus = members?.[jobIndex]?.status_effects;
+				if (!xiangYuStatus) return;
+				for (const effect of xiangYuStatus) {
+					if (effect.id === warriorSpiritId) {
+						warriorSpiritLevel = effect.level;
+						break;
+					}
+				}
+			} catch(error) {
+				debugLog("updateXiangYuWarriorSpirit: " + error);
+			}
 		}
 		/**
 		 * @description 取得貝多芬身上的旋律數量並更新至 beethovenState
