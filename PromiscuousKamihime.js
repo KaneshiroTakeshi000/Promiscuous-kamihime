@@ -3443,6 +3443,8 @@ function onGameApp() {
 			//使用藥水
 			//await useSuperPotion();
 			//await usePotion();
+			//兌換獸人商店
+			//await purchaseOrcShopItems();
 
 			const rescueId = await battleGetRescueId();//救援碼
 			if (rescueId) {
@@ -3450,52 +3452,6 @@ function onGameApp() {
 			} else {
 			 	debugLog("no rescue id");
 			}
-
-			//獸人活動
-			// const eventRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_banners/event_on_period`}, "unblock");
-			// const currentEvent = eventRes.body.data.find((e) => "rush_event" === e.event_type);
-			// const orcEventID = currentEvent?.event_id;
-			// if (orcEventID) {
-			// 	debugLog("orc event id: " + orcEventID);
-			// 	//道具數量
-			// 	const treasures = await _httpClient.get({url: `${kh.env.urlRoot}/a_events/rush_event/${orcEventID}`}, "unblock");
-			// 	let sticks = treasures?.body?.event_treasures?.[0]?.amount ?? 0;
-			// 	//獸人商店
-			// 	const orcShopRes = await _httpClient.get({url: `${kh.env.urlRoot}/treasures`, json: {event_id:orcEventID}}, "unblock");
-			// 	if (orcShopRes?.body?.data) {
-			// 		//944	(1/10)SSR確定轉蛋券
-			// 		//11	豪華轉蛋券
-			// 		//13	神姬解放武器轉蛋券
-			// 		//4001	幻魔核心
-			// 		//10002	幻獸寶珠
-			// 		//40154	英氣儲存器
-			// 		//126	神龍眼碎片
-			// 		//6010	蒼銀果實格洛斯
-			// 		//6101	奧利哈鋼
-			// 		//1		魔水晶
-			// 		//3		魂玉
-			// 		const targetItemIds = [1, 944, 11, 13, 4001, 10002, 40154, 126, 6010, 3];
-			// 		for (const targetItemId of targetItemIds) {
-			// 			const targetItem = orcShopRes.body.data.find((item) => item.game_item?.item_id === targetItemId);
-			// 			if (!targetItem) continue;
-			// 			const requiredSticks = targetItem.exchange_items?.[0]?.required_num || Infinity;
-			// 			const stockLimit = targetItem.stock_info.has 
-			// 				? parseInt(targetItem.stock_info.amount, 10) 
-			// 				: Infinity;
-			// 			const affordableNum = Math.floor(sticks / requiredSticks);
-			// 			const buyNum = Math.min(affordableNum, stockLimit);
-			// 			if (buyNum > 0) {
-			// 				await _httpClient.post({
-			// 					url: `${kh.env.urlRoot}/shop/exchange`, 
-			// 					json: {shop_treasure_id: targetItem.shop_treasure_id,shop_type: "event", event_id: orcEventID, num: buyNum}
-			// 				}, "unblock");
-			// 				sticks -= (buyNum * requiredSticks);
-			// 			}
-			// 		}
-			// 		//兌換
-			// 		//await _httpClient.post({url: `${kh.env.urlRoot}/shop/exchange`, json: {shop_treasure_id:4031124,shop_type:"event",event_id:orcEventID,num:1}}, "unblock");
-			// 	}
-			// }
 
 			// //個人留言板
 			// const raidRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_greets`,json: {a_player_id: "me"}}, "unblock");
@@ -4238,6 +4194,11 @@ function onGameApp() {
 		try {
 			_isEidolonOrbSearching = true;
 			if (_currentSceneName === "battle") return;//戰鬥中不作用
+			//結算畫面時先跳至主頁,避免與結算觸發的程序衝突
+			if (_currentSceneName === "q_result") {
+				const router = kh.createInstance("router");
+				if (router) router.navigate("mypage/my_001");
+			}
 			robotEidolonOrbTrigger();
 		} catch (error) {
 			debugLog("robotEidolonOrbStart: " + error);
@@ -4252,39 +4213,13 @@ function onGameApp() {
 	async function robotEidolonOrbTrigger() {
 		try {
 			_isEidolonOrbSearching = true;
-			//主線關卡章節
-			const questType = "main";
-			const mainQuestID = 64;
-			const episodeNum = 2;
-			//取得關卡之前的資訊
-			const main642PrevInfo = await getQuestPrevious(mainQuestID, questType, episodeNum);
-			const prevPartyId = main642PrevInfo.prevPartyId;
-			const prevSummonElement = main642PrevInfo.prevSummonElement;
-			//取得支援幻獸
-			const supportSummonId = await getSupportSummonId(prevSummonElement);
-			//產生入場資訊
-			const currentQuest = {
-				url: `${kh.env.urlRoot}/a_quests/${mainQuestID}/start`,
-				json: {
-					type: questType,
-					a_party_id: prevPartyId,
-					support_a_summon_id: supportSummonId,
-					support_summon_tab_element_type: prevSummonElement,
-					episode_num: episodeNum
-				}
-			}
-			//進入幻獸點關卡
-			if (await launchRaidBattle(currentQuest)) {
-				//return false;
-			} else {
-				debugLog("launch fail, give up");
-			}
-			return false;
+			await runMainQuest642();//主線關卡
 		} catch (error) {
 			debugLog("robotSummonPointStart: " + error);
 		} finally {
 			_isEidolonOrbSearching = false;
 		}
+		return true;
 	}
 	/**
 	 * @description raid event關卡
@@ -4303,6 +4238,16 @@ function onGameApp() {
 				}
 				_raidEventID = currentEvent.event_id;
 				debugLog("event id: " + _raidEventID);
+				//檢查關卡,應對只保留故事的事件
+				const questRes = await _httpClient.get({
+					url: `${kh.env.urlRoot}/a_quests`,
+					json: { type: "event", "event_id": _raidEventID}
+				}, "unblock");
+				const expertQuest = questRes.body.data.find((q) => q.difficulty === "expert");
+				if (!expertQuest) {
+					debugLog("no quest Id.");
+					return;
+				}
 			}
 			await robotRaidEventTrigger();
 		} catch (error) {
@@ -4389,8 +4334,16 @@ function onGameApp() {
 				if (currentEvent) {
 					_raidEventID = currentEvent.event_id;
 					debugLog("event id: " + _raidEventID);
-				} else {
-					debugLog("no event id.");
+					//檢查關卡,應對只保留故事的事件
+					const questRes = await _httpClient.get({
+						url: `${kh.env.urlRoot}/a_quests`,
+						json: { type: "event", "event_id": _raidEventID}
+					}, "unblock");
+					const expertQuest = questRes.body.data.find((q) => q.difficulty === "expert");
+					if (!expertQuest) {
+						debugLog("no quest Id.");
+						_raidEventID = 0;
+					}
 				}
 			}
 			robotFreeManTrigger();
@@ -4420,19 +4373,18 @@ function onGameApp() {
 					}
 				}
 			}
-			//快速救援
+			//快速救援會被當外掛檢舉,勿用
 			//await speedRescueRaid();
 			//尋找公開的Raid
 			if (await joinPublicRaids(false)) {return false;}
-			//隨機打
 			if (_raidEventID === 0) {
-				await runMainQuest();//主線關卡
+				await runMainQuest642();//主線關卡
 			} else {
-				//60% 打raid event，40% 打主線關卡
-				if (Math.random() < 0.6) {
+				//40% 打raid event，60% 打主線關卡
+				if (Math.random() < 0.4) {
 					await runRaidEvent();//raid event
 				} else {
-					await runMainQuest();//主線關卡
+					await runMainQuest642();//主線關卡
 				}
 			}
 		} catch (error) {
@@ -4441,83 +4393,6 @@ function onGameApp() {
 			_isFreeManSearching = false;
 		}
 		return true;
-		//執行主線關卡
-		async function runMainQuest() {
-			const questType = "main";
-			const mainQuestID = 64;
-			const episodeNum = 2;
-			//取得關卡之前的資訊
-			const main642PrevInfo = await getQuestPrevious(mainQuestID, questType, episodeNum);
-			const prevPartyId = main642PrevInfo.prevPartyId;
-			const prevSummonElement = main642PrevInfo.prevSummonElement;
-			//取得支援幻獸
-			const supportSummonId = await getSupportSummonId(prevSummonElement);
-			//產生入場資訊
-			const currentQuest = {
-				url: `${kh.env.urlRoot}/a_quests/${mainQuestID}/start`,
-				json: {
-					type: questType,
-					a_party_id: prevPartyId,
-					support_a_summon_id: supportSummonId,
-					support_summon_tab_element_type: prevSummonElement,
-					episode_num: episodeNum
-				}
-			}
-			//進入幻獸點關卡
-			if (await launchRaidBattle(currentQuest)) {
-				return true;
-			} else {
-				debugLog("launch fail, give up");
-				return false;
-			}
-		}
-		//執行Raid event
-		async function runRaidEvent() {
-			//取得活動道具數量
-			const questRes = await _httpClient.get({
-				url: `${kh.env.urlRoot}/a_quests`,
-				json: { type: "event", "event_id": _raidEventID}
-			}, "unblock");
-			if (!questRes) {debugLog("no respone.");return false;}
-			if (!questRes.body) {debugLog("no respone.");return false;}
-			if (!questRes.body.data) {debugLog("no respone.");return false;}
-			const questWithItems = questRes.body.data.find(q => q.required_item && q.required_item.length > 0);
-			const itemNum = questWithItems ? questWithItems.required_item[0].possession_amount : 0;
-			let targetQuestId = null;
-			//道具多就刷ragnarok,否則刷expert
-			if (itemNum > 200) {
-				const ragnarokQuest = questRes.body.data.find((q) => q.difficulty === "ragnarok");
-				if (ragnarokQuest) targetQuestId = ragnarokQuest.quest_id;
-			} else {
-				const expertQuest = questRes.body.data.find((q) => q.difficulty === "expert");
-				if (expertQuest) targetQuestId = expertQuest.quest_id;
-			}
-			if (!targetQuestId) {debugLog("no quest Id.");return false;}
-			const raidEventType = "event_raid";
-			//取得關卡之前的資訊
-			const questPrevInfo = await getQuestPrevious(targetQuestId, raidEventType);
-			const prevPartyId = questPrevInfo.prevPartyId;
-			const prevSummonElement = questPrevInfo.prevSummonElement;
-			//取得支援幻獸
-			const supportSummonId = await getSupportSummonId(prevSummonElement);
-			//產生入場資訊
-			const currentQuest = {
-				url: `${kh.env.urlRoot}/a_quests/${targetQuestId}/start`,
-				json: {
-					type: raidEventType,
-					a_party_id: prevPartyId,
-					support_a_summon_id: supportSummonId,
-					support_summon_tab_element_type: prevSummonElement,
-				}
-			}
-			//進入關卡
-			if (await launchRaidBattle(currentQuest)) {
-				return true;
-			} else {
-				debugLog("launch fail, give up");
-				return false;
-			}
-		}
 	}
 	/**
 	 * @description 每日要執行的動作集合
@@ -4546,12 +4421,9 @@ function onGameApp() {
 					debugLog(`No free jewels`);
 				}
 			}
-			//每日免費10連
-			await executeFreeGacha();
-			//每日試運3連
-			await executeLuckGacha();
-			//檢查戰鬥任務
-			await refreshDailyQuests();
+			await executeFreeGacha();//每日免費10連
+			await executeLuckGacha();//每日試運3連
+			await refreshDailyQuests();//檢查戰鬥任務
 			//開始執行任務
 			debugLog("mission count: " + _dailyQuests.length);
 			while (_dailyQuests.length > 0) {
@@ -5134,7 +5006,7 @@ function onGameApp() {
 						});
 					}
 				}
-				await sleep(100);
+				await sleep(500);
 				if (_autonomousRobot !== "epic") {debugLog("stop robot epic");return false;}
 			}
 			//開始清掃史詩關卡
@@ -5368,6 +5240,83 @@ function onGameApp() {
 			debugLog("robotPublicRaidTimer: " + error);
 		} finally {
 			_isPublicRaidSearching = false;
+		}
+	}
+	//執行主線關卡
+	async function runMainQuest642() {
+		const questType = "main";
+		const mainQuestID = 64;
+		const episodeNum = 2;
+		//取得關卡之前的資訊
+		const main642PrevInfo = await getQuestPrevious(mainQuestID, questType, episodeNum);
+		const prevPartyId = main642PrevInfo.prevPartyId;
+		const prevSummonElement = main642PrevInfo.prevSummonElement;
+		//取得支援幻獸
+		const supportSummonId = await getSupportSummonId(prevSummonElement);
+		//產生入場資訊
+		const currentQuest = {
+			url: `${kh.env.urlRoot}/a_quests/${mainQuestID}/start`,
+			json: {
+				type: questType,
+				a_party_id: prevPartyId,
+				support_a_summon_id: supportSummonId,
+				support_summon_tab_element_type: prevSummonElement,
+				episode_num: episodeNum
+			}
+		}
+		//進入幻獸點關卡
+		if (await launchRaidBattle(currentQuest)) {
+			return true;
+		} else {
+			debugLog("launch fail, give up");
+			return false;
+		}
+	}
+	//執行Raid event
+	async function runRaidEvent() {
+		//取得活動道具數量
+		const questRes = await _httpClient.get({
+			url: `${kh.env.urlRoot}/a_quests`,
+			json: { type: "event", "event_id": _raidEventID}
+		}, "unblock");
+		if (!questRes) {debugLog("no respone.");return false;}
+		if (!questRes.body) {debugLog("no respone.");return false;}
+		if (!questRes.body.data) {debugLog("no respone.");return false;}
+		const questWithItems = questRes.body.data.find(q => q.required_item && q.required_item.length > 0);
+		const itemNum = questWithItems ? questWithItems.required_item[0].possession_amount : 0;
+		let targetQuestId = null;
+		//道具多就刷ragnarok,否則刷expert
+		if (itemNum > 200) {
+			const ragnarokQuest = questRes.body.data.find((q) => q.difficulty === "ragnarok");
+			if (ragnarokQuest) targetQuestId = ragnarokQuest.quest_id;
+		} else {
+			const expertQuest = questRes.body.data.find((q) => q.difficulty === "expert");
+			if (expertQuest) targetQuestId = expertQuest.quest_id;
+		}
+		if (!targetQuestId) {debugLog("no quest Id.");return false;}
+		const raidEventType = "event_raid";
+		//取得關卡之前的資訊
+		const questPrevInfo = await getQuestPrevious(targetQuestId, raidEventType);
+		const prevPartyId = questPrevInfo.prevPartyId;
+		const prevSummonElement = questPrevInfo.prevSummonElement;
+		//取得支援幻獸
+		const supportSummonId = await getSupportSummonId(prevSummonElement);
+		//產生入場資訊
+		const currentQuest = {
+			url: `${kh.env.urlRoot}/a_quests/${targetQuestId}/start`,
+			json: {
+				type: raidEventType,
+				a_party_id: prevPartyId,
+				support_a_summon_id: supportSummonId,
+				support_summon_tab_element_type: prevSummonElement,
+			}
+		}
+		//進入關卡
+		if (await launchRaidBattle(currentQuest)) {
+			return true;
+		} else {
+			debugLog("launch fail, give up");
+			return false;
 		}
 	}
 	/**
@@ -6158,6 +6107,57 @@ function onGameApp() {
 		}
 	}
 	/**
+	 * @description 獸人商店交換物品
+	 */
+	async function purchaseOrcShopItems() {
+		try {
+			const eventRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_banners/event_on_period`}, "unblock");
+			const currentEvent = eventRes.body.data.find((e) => "rush_event" === e.event_type);
+			const orcEventID = currentEvent?.event_id;
+			if (!orcEventID) {debugLog("no orc event");return;}
+			debugLog("orc event id: " + orcEventID);
+			//道具數量
+			const treasures = await _httpClient.get({url: `${kh.env.urlRoot}/a_events/rush_event/${orcEventID}`}, "unblock");
+			let sticks = treasures?.body?.event_treasures?.[0]?.amount ?? 0;
+			//獸人商店
+			const orcShopRes = await _httpClient.get({url: `${kh.env.urlRoot}/shop/treasures`, json: {event_id:orcEventID}}, "unblock");
+			if (orcShopRes?.body?.data) {
+				//944	(1/10)SSR確定轉蛋券
+				//11	豪華轉蛋券
+				//13	神姬解放武器轉蛋券
+				//4001	幻魔核心
+				//10002	幻獸寶珠
+				//40154	英氣儲存器
+				//126	神龍眼碎片
+				//6010	蒼銀果實格洛斯
+				//6101	奧利哈鋼
+				//1		魔水晶
+				//3		魂玉
+				const targetItemIds = [1, 944, 11, 13, 4001, 10002, 40154, 126, 6010, 3];
+				for (const targetItemId of targetItemIds) {
+					const targetItem = orcShopRes.body.data.find((item) => item.game_item?.item_id === targetItemId);
+					if (!targetItem) continue;
+					const requiredSticks = targetItem.exchange_items?.[0]?.required_num || Infinity;
+					const stockLimit = targetItem.stock_info.has 
+						? parseInt(targetItem.stock_info.amount, 10) 
+						: Infinity;
+					const affordableNum = Math.floor(sticks / requiredSticks);
+					const buyNum = Math.min(affordableNum, stockLimit);
+					if (buyNum > 0) {//兌換
+						await _httpClient.post({
+							url: `${kh.env.urlRoot}/shop/exchange`, 
+							json: {shop_treasure_id: targetItem.shop_treasure_id,shop_type: "event", event_id: orcEventID, num: buyNum}
+						}, "unblock");
+						sticks -= (buyNum * requiredSticks);
+						await sleep(500);
+					}
+				}
+			}
+		} catch (error) {
+			debugLog("purchaseOrcShopItems: " + error);
+		}
+	}
+	/**
 	 * @description 商店交換物品,主要是每月限量交換的物品
 	 * @returns {number} 回傳成功次數
 	 */
@@ -6367,7 +6367,7 @@ function onGameApp() {
 			//稀有度SR以下
 			const TARGET_RARITIES = new Set(["N", "R", "SR"]);
 			//活動武器ID
-			const RAID_WEAPON_IDS = new Set([
+			const EVENT_WEAPON_IDS = new Set([
 				//Flame
 				2006, 2009, 2013, 2016, 2037, 2043, 2044, 2055, 2059, 2063,
 				2072, 2090, 2091, 2094, 2100, 2101, 2143, 2144, 2145, 2165,
@@ -6407,9 +6407,24 @@ function onGameApp() {
 				//Phantom
 				2296
 			]);
+			//Raid掉落物
+			const RAID_WEAPON_IDS = new Set([
+				//70
+				441, 442, 443, 444, 445, 446, 447, 448, 449, 450, 451, 452,
+				453, 454, 455, 456, 457, 458,
+				//100
+				2103, 2104, 2105, 2106, 2107, 2108, 2109, 2110, 2111,
+				2112, 2113, 2114, 2115, 2116, 2117, 2118, 2119, 2120,
+				2326, 2327, 2328, 2329, 2330, 2331,
+				//140
+				2278, 2279, 2280, 2281, 2282, 2283, 2284, 2285,
+				2286, 2287, 2288, 2289,
+				//160
+				515, 516, 517 ,518, 519, 520, 521, 522, 523, 524, 525, 526
+			]);
 			const targetWeaponIds = weaponList
 				.filter(item => !item.is_equipped && !item.is_locked)
-				.filter(item => TARGET_RARITIES.has(item.rare) || RAID_WEAPON_IDS.has(item.weapon_id))
+				.filter(item => TARGET_RARITIES.has(item.rare) || EVENT_WEAPON_IDS.has(item.weapon_id) || RAID_WEAPON_IDS.has(item.weapon_id))
 				.map(item => item.a_weapon_id);
 			debugLog("weapon count: " + targetWeaponIds.length);
 			if (targetWeaponIds.length == 0) return;
@@ -6887,6 +6902,7 @@ function onGameApp() {
 				exportData.player.from = "dmm";
 			}
 			//持有的神姬資料, id,名稱
+			debugLog("load characters...");
 			await _httpClient.post({
 				url: `${kh.env.urlRoot}/a_players/me/display_filter/book_chara`,
 				json: {rarity: [],element_type: [],character_type: [],proper_weapon_type: []}
@@ -6895,36 +6911,24 @@ function onGameApp() {
 				url: `${kh.env.urlRoot}/a_characters`,
 				json: {display_filter_name: "book_chara", page: 1, per_page: 100000, from_tower: false}
 			}, "unblock");
-			const charas = [];
+			//const charas = [];
 			if (charactersRes && charactersRes.body && charactersRes.body.data) {
 				charactersRes.body.data.forEach(function (item) {
-					charas.push(item.character_id);
+					exportData.characters.push(item.character_id);
 				});
 			}
-			for (let i = 0; i < charas.length; i++) {
-				const chara = charas[i];
-				const detailRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_characters/${chara}`}, "unblock");
-				if (detailRes && detailRes.body) {
-					//名稱,稀有度,id
-					const himeData = detailRes.body;
-					exportData.characters.push({character_id:himeData.character_id,name:himeData.name});
-				}
-			}
-			//持有的武器資料, id,名稱
-			await _httpClient.post({
-				url: `${kh.env.urlRoot}/a_players/me/display_filter/book_weapon`,
-				json: {grade:[],special_weapon_type:[],weapon_type:[],weapon_skill:[],skill_effect_size:[],rarity:[],element_type:[]}
-			}, "unblock");
-			const weaponsRes = await _httpClient.get({
-				url: `${kh.env.urlRoot}/a_weapons`,
-				json: {display_filter_name:"book_weapon",page:1,per_page:100000}
-			}, "unblock");
-			if (weaponsRes && weaponsRes.body && weaponsRes.body.data) {
-				weaponsRes.body.data.forEach(function (item) {
-					exportData.weapons.push({weapon_id:item.weapon_id,name:item.name});
-				});
-			}
+			// for (let i = 0; i < charas.length; i++) {
+			// 	debugLog(`load characters ${i+1} | ${charas.length}`);
+			// 	const chara = charas[i];
+			// 	const detailRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_characters/${chara}`}, "unblock");
+			// 	if (detailRes && detailRes.body) {
+			// 		//名稱,id
+			// 		const himeData = detailRes.body;
+			// 		exportData.characters.push({character_id:himeData.character_id,name:himeData.name});
+			// 	}
+			// }
 			//持有的幻獸資料, id,名稱
+			debugLog("load summons...");
 			await _httpClient.post({
 				url: `${kh.env.urlRoot}/a_players/me/display_filter/book_summon`,
 				json: {rarity:[],element_type:[],grade:[]}
@@ -6935,17 +6939,34 @@ function onGameApp() {
 			}, "unblock");
 			if (summonsRes && summonsRes.body && summonsRes.body.data) {
 				summonsRes.body.data.forEach(function (item) {
-					exportData.summons.push({summon_id:item.summon_id,name:item.name});
+					exportData.summons.push(item.summon_id);
 				});
 			}
 			//持有的英靈資料, id,名稱
+			debugLog("load jobs...");
 			const jobsRes = await _httpClient.get({url: `${kh.env.urlRoot}/a_jobs`}, "unblock");
 			if (jobsRes && jobsRes.body && jobsRes.body.data) {
 				jobsRes.body.data.forEach(function (item) {
-					if (item.is_acquired) exportData.jobs.push({job_id: item.job_id, name: item.name});
+					if (item.is_acquired) exportData.jobs.push(item.job_id);
 				});
 			}
-			exportToJsonFile("Watashi", JSON.stringify(exportData, null, 2));
+			//持有的武器資料, id,名稱
+			// debugLog("load weapons...");
+			// await _httpClient.post({
+			// 	url: `${kh.env.urlRoot}/a_players/me/display_filter/book_weapon`,
+			// 	json: {grade:[],special_weapon_type:[],weapon_type:[],weapon_skill:[],skill_effect_size:[],rarity:[],element_type:[]}
+			// }, "unblock");
+			// const weaponsRes = await _httpClient.get({
+			// 	url: `${kh.env.urlRoot}/a_weapons`,
+			// 	json: {display_filter_name:"book_weapon",page:1,per_page:100000}
+			// }, "unblock");
+			// if (weaponsRes && weaponsRes.body && weaponsRes.body.data) {
+			// 	weaponsRes.body.data.forEach(function (item) {
+			// 		exportData.weapons.push({weapon_id:item.weapon_id});
+			// 	});
+			// }
+			debugLog("output...");
+			exportToJsonFile("Watashi", JSON.stringify(exportData));
 		} catch (error) {
 			debugLog("downloadMyInformation: " + error);
 		}
@@ -8721,6 +8742,7 @@ function onGameApp() {
 		const warriorSpiritId = 13623;//士魂ID
 		let warriorSpiritLevel = 0;//士魂數量
 		let isXiangYu = false;//項羽模式
+		let isParacelsus = false;
 
 		const battleWorld = kh.createInstance("battleWorld");
 		if (!battleWorld) return;
@@ -8737,6 +8759,7 @@ function onGameApp() {
 					jobIndex=i;
 					if (character.id === 50) beethovenState.isActive = true;
 					if (character.id === 46) isXiangYu = true;
+					if (character.id === 39) isParacelsus = true;
 					break;
 				}
 			} 
@@ -8797,6 +8820,14 @@ function onGameApp() {
 							skillColor = "unknown";//貝多芬本身技能不計入旋律計算
 						} else if (isXiangYu && skillIdx === 0 && warriorSpiritLevel > 8) {
 							continue;//項羽士魂足量時不使用1技,防過度燒血
+						} else if (isParacelsus) {
+							if (skillIdx === 1) {
+								const skillType = skill?._abilityData?.type ?? 0;
+								if (skillType === 55) calculatedPriority = 81;//暴走
+							} else if (skillIdx === 2) {
+								const skillType = skill?._abilityData?.type ?? 0;
+								if (skillType === 1) calculatedPriority = 82;//全體即座普攻
+							}
 						}
 					} else {
 						//有特殊優先級的角色先套用
@@ -8864,6 +8895,7 @@ function onGameApp() {
 			//} else {
 			//	await setBattleBurstState(false);
 			//}
+			if (isParacelsus) await setBattleBurstState(false);//煉金不Burst
 			//點擊攻擊按鍵
 			await battleWorld.battleUI.AttackButton.simulateAttack();
 		} catch(error) {
