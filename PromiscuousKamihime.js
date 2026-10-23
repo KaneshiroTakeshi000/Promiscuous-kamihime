@@ -6711,11 +6711,32 @@ function onGameApp() {
 						}, "unblock");
 						//篩選出尚未通關的劇情
 						const quests = questRes.body.data.filter(q => !q.is_cleared && q.a_quest_id);
-						allEpisodes.push(...quests);
+						if (quests.length > 0) {
+							allEpisodes.push(...quests);
+						} else {
+							//查詢有無覺醒角色ID
+							const promotionsRes = await _httpClient.get({
+								url: `${kh.env.urlRoot}/a_library/characters/${character.character_id}/promotions`,
+								json: {}
+							}, "unblock");
+							const arousedCharacterId = promotionsRes.body && promotionsRes.body.aroused_character_id;
+							//取得覺醒角色劇情
+							if (arousedCharacterId) {
+								const arousedQuestRes = await _httpClient.get({
+									url: `${kh.env.urlRoot}/a_quests`,
+									json: { type: "harem-character", character_id: arousedCharacterId }
+								}, "unblock");
+								//篩選出覺醒角色尚未通關的劇情
+								const arousedQuests = arousedQuestRes.body.data.filter(q => !q.is_cleared && q.a_quest_id);
+								allEpisodes.push(...arousedQuests);
+							}
+						}
 					} catch (error) {
 						debugLog("get character ID (:" + character.character_id + ") fail.");
 					}
 				}
+			} else {
+				debugLog(`episode count: ${characters.length}`)
 			}
 			//取得幻獸劇情
 			const summonRes = await _httpClient.get({
@@ -6781,7 +6802,16 @@ function onGameApp() {
 				}
 			}
 			//Extra_memorial
-			//{"url":"/a_library/memorial_illusts","json":{"harem":true,"page":1,"per_page":100000,"filter":"all"}}
+			const memorialRes = await _httpClient.get({
+				url: `${kh.env.urlRoot}/a_library/memorial_illusts`,
+				json: { harem: true, page: 1, per_page: 100000, filter: "all" }
+			}, "unblock");
+			const memorialData = memorialRes.body.data.filter(c => !c.is_cleared);
+			if (memorialData.length > 0) {
+				for (const memorial of memorialData) {allEpisodes.push(...memorial);}
+			} else {
+				debugLog(`memorial count: ${memorialData.length}`);
+			}
 			//{"url":"/a_library/burst_skins","json":{"harem":true,"page":1,"per_page":100000}}
 			//Others劇情
 			//{"url":"/a_quests","json":{"type":"harem-ex","page":1,"per_page":100000}}
@@ -6790,19 +6820,20 @@ function onGameApp() {
 			//閱讀劇情
 			for (let i = 0; i < allEpisodes.length; i++) {
 				const episode = allEpisodes[i];
-				const battleId = episode.a_quest_id;
+				//const aQuestId = episode.a_quest_id;
 				const questId = episode.quest_id;
 				const questType = episode.type;
 				debugLog("watch: " + episode.title);
 				try {
 					//進入劇情
-					await _httpClient.post({
+					const episodeRes = await _httpClient.post({
 						url: `${kh.env.urlRoot}/a_quests/${questId}/start`,
 						json: {type: questType}
 					}, "unblock");
+					const aQuestId = episodeRes?.body?.a_quest_id;
 					//完成劇情
 					await _httpClient.post({
-						url: `${kh.env.urlRoot}/a_battles/${battleId}/result`,
+						url: `${kh.env.urlRoot}/a_battles/${aQuestId}/result`,
 						json: {quest_type: questType}
 					}, "unblock");
 				} catch (error) {
@@ -9030,6 +9061,33 @@ function onGameApp() {
 				debugLog("findAbilityTarget: " + error);
 				return -1;
 			}
+		}
+		/**
+		 * @description 判斷是否解除負面狀態
+		 * @returns {Boolean} 是否達到解除條件
+		 */
+		function needRecover(){
+			const BAD_STATUS_IDS = new Set([
+				10, 11, 12, 16, 17, 18, 22, 25, 26,
+				54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 69, 89, 134
+			]);
+			const characterPanelList = battleWorld.characterPanelList;
+			if (!characterPanelList || characterPanelList.length === 0) return false;
+			const statusEffectList = battleWorld.statusEffectList;
+			if (!statusEffectList) return false;
+			//檢查是否有角色帶有負面狀態
+			return characterPanelList.some((_, characterIndex) => {
+				for (const statusId of BAD_STATUS_IDS) {
+					const statusData = statusEffectList[statusId];
+					if (statusData && statusData._characters && statusData._characters[characterIndex]) {
+						const characterData = statusData._characters[characterIndex][0];
+						if (characterData !== undefined && characterData !== null) {
+							return true;
+						}
+					}
+				}
+				return false;
+			});
 		}
 		/**
 		 * @description 判斷是否全隊能發動 Burst
