@@ -4087,7 +4087,7 @@ function onGameApp() {
 			//onQuestResult 戰鬥結算
 			//onQuestResultTimeout 戰鬥結算逾時
 			switch (_autonomousRobot) {
-				case "daily":
+				case "daily"://每日任務與每日任務關卡
 					switch (stepName) {
 						case "submitOrder":if (!_isDailySearching) {_isDailySearching = true;setTimeout(robotDailyStart, 0)};break;
 						case "BattleRescue":break;
@@ -4097,7 +4097,7 @@ function onGameApp() {
 						case "onQuestResultTimeout":if (!_isDailySearching) {_isDailySearching = true;setTimeout(robotDailyQuestResult, 0)};break;
 					}
 					break;	
-				case "public":
+				case "public"://自動尋找公開的RAID關卡並進場救援
 					switch (stepName) {
 						case "submitOrder":if (!_isPublicRaidSearching) {_isPublicRaidSearching = true;setTimeout(robotPublicRaidTimer, 0)};break;
 						case "BattleRescue":break;
@@ -4107,7 +4107,7 @@ function onGameApp() {
 						case "onQuestResultTimeout":break;
 					}
 					break;
-				case "rescue":
+				case "rescue"://監視資料庫中救援碼,並進場救援
 					switch (stepName) {
 						case "submitOrder":if (!_robotRescueRaidTimerId) _robotRescueRaidTimerId = setTimeout(robotRescueRaidTimer, 0);break;
 						case "BattleRescue":break;
@@ -4117,7 +4117,7 @@ function onGameApp() {
 						case "onQuestResultTimeout":if (!_robotRescueRaidTimerId) _robotRescueRaidTimerId = setTimeout(robotRescueRaidTimer, 0);break;
 					}
 					break;
-				case "myRaid":
+				case "myRaid"://自動開啟自己的RAID關卡
 					switch (stepName) {
 						case "submitOrder":if (!_isMyRaidSearching) {_isMyRaidSearching = true;setTimeout(robotMyRaidStart, 0)};break;
 						case "BattleRescue":
@@ -4130,7 +4130,7 @@ function onGameApp() {
 						case "onQuestResultTimeout":if (!_isMyRaidSearching) {_isMyRaidSearching = true;setTimeout(robotMyRaidStart, 0)};break;
 					}
 					break;
-				case "union":
+				case "union"://煉獄戰,拂曉戰自動爬層
 					switch (stepName) {
 						case "submitOrder":if (!_isUnionSearching) {_isUnionSearching = true;setTimeout(robotUnionStart, 0)};break;
 						case "BattleRescue":break;
@@ -4140,7 +4140,7 @@ function onGameApp() {
 						case "onQuestResultTimeout":break;
 					}
 					break;
-				case "raidEvent":
+				case "raidEvent"://自動開啟自己的活動RAID關卡
 					switch (stepName) {
 						case "submitOrder":if (!_isRaidEventSearching) {_isRaidEventSearching = true;setTimeout(robotRaidEventStart, 0)};break;
 						case "BattleRescue":break;
@@ -4150,7 +4150,7 @@ function onGameApp() {
 						case "onQuestResultTimeout":if (!_isRaidEventSearching) {_isRaidEventSearching = true;setTimeout(robotRaidEventTrigger, 0)};break;
 					}
 					break;
-				case "eidolonOrb":
+				case "eidolonOrb"://自動開啟指定的幻獸幣關卡
 					switch (stepName) {
 						case "submitOrder":if (!_isEidolonOrbSearching) {_isEidolonOrbSearching = true;setTimeout(robotEidolonOrbStart, 0)};break;
 						case "BattleRescue":break;
@@ -4160,7 +4160,7 @@ function onGameApp() {
 						case "onQuestResultTimeout":if (!_isEidolonOrbSearching) {_isEidolonOrbSearching = true;setTimeout(robotEidolonOrbTrigger, 0)};break;
 					}
 					break;
-				case "epic":
+				case "epic"://自動開啟史詩關卡
 					switch (stepName) {
 						case "submitOrder":if (!_isEpicSearching) {_isEpicSearching = true;setTimeout(robotEpicStart, 0)};break;
 						case "BattleRescue":break;
@@ -4170,7 +4170,7 @@ function onGameApp() {
 						case "onQuestResultTimeout":if (!_isEpicSearching) {_isEpicSearching = true;setTimeout(robotEpicTrigger, 0)};break;
 					}
 					break;
-				case "freeMan":
+				case "freeMan"://在幻獸幣關卡,公開RAID關卡,活動RAID關卡,救援碼中,自由切換
 					switch (stepName) {
 						case "submitOrder":if (!_isFreeManSearching) {_isFreeManSearching = true;setTimeout(robotFreeManStart, 0)};break;
 						case "BattleRescue":break;
@@ -5533,18 +5533,18 @@ function onGameApp() {
 			//預設第一隻
 			let selectedId = summonData[0].summon_info.a_summon_id;
 			//依幻獸屬性頁設置不同挑選條件
-			//5012炎貴, 5021炎皇, 5024朱雀, 5028炎天獄, 5044炎天寶, 5052炎機獸, 5056炎騎, 5060炎鬼神, 炎鬼裝
-			const flamePriority = [5060, 5044, 5028, 5056, 5052, 5021, 5012];
-			//5014水貴, 5020水皇, 5022青龍, 5029冰天獄, 5045水天寶 ,5048水機獸, 5054水騎, 5061水鬼神, 水鬼裝
-			const waterPriority = [5061, 5045, 5029, 5054, 5048, 5020, 5014];
-			//5015風貴, 5017風皇, 5025玄武, 5030風天獄, 5040風天寶, 5051風機獸, 5058風騎, 5064風鬼神, 風鬼裝
-			const widePriority = [5064, 5040, 5030, 5058, 5051, 5017, 5015];
-			//5013雷貴, 5019雷皇, 5023白虎, 5031雷天獄, 5041雷天寶, 5050雷機獸, 5059雷騎, 5062雷鬼神, 雷鬼裝
-			const thunderPriority = [5062, 5041, 5031, 5059, 5050, 5019, 5013];
-			//5011闇貴, 5046闇皇, 5027北斗, 5033闇天獄, 5042闇天寶, 5049闇機獸, 5057闇騎, 5063闇鬼神, 闇鬼裝
-			const darknessPriority = [5063, 5042, 5033, 5057, 5049, 5046, 5011];
-			//5016光貴, 5047光皇, 5026南斗, 5032光天獄, 5043光天寶, 5053光機獸, 5055光騎, 5065光鬼神, 光鬼裝
-			const lightPriority = [5065, 5043, 5032, 5055, 5053, 5047, 5016];
+			//5012炎貴, 5021炎皇, 5024朱雀, 5028炎天獄, 5044炎天寶, 5052炎機獸, 5056炎騎, 5060炎鬼神, 5066炎鬼裝, 5076炎童話, 炎大貴
+			const flamePriority = [5076, 5066, 5060, 5044, 5028, 5056, 5052, 5021, 5012];
+			//5014水貴, 5020水皇, 5022青龍, 5029冰天獄, 5045水天寶 ,5048水機獸, 5054水騎, 5061水鬼神, 5068水鬼裝, 5074水童話, 水大貴
+			const waterPriority = [5074, 5068, 5061, 5045, 5029, 5054, 5048, 5020, 5014];
+			//5015風貴, 5017風皇, 5025玄武, 5030風天獄, 5040風天寶, 5051風機獸, 5058風騎, 5064風鬼神, 5069風鬼裝, 5077風童話, 風大貴
+			const widePriority = [5077, 5069, 5064, 5040, 5030, 5058, 5051, 5017, 5015];
+			//5013雷貴, 5019雷皇, 5023白虎, 5031雷天獄, 5041雷天寶, 5050雷機獸, 5059雷騎, 5062雷鬼神, 5070雷鬼裝, 5072雷童話, 5078雷大貴
+			const thunderPriority = [5078, 5072, 5070, 5062, 5041, 5031, 5059, 5050, 5019, 5013];
+			//5011闇貴, 5046闇皇, 5027北斗, 5033闇天獄, 5042闇天寶, 5049闇機獸, 5057闇騎, 5063闇鬼神, 5067闇鬼裝, 5073闇童話, 闇大貴
+			const darknessPriority = [5073, 5067, 5063, 5042, 5033, 5057, 5049, 5046, 5011];
+			//5016光貴, 5047光皇, 5026南斗, 5032光天獄, 5043光天寶, 5053光機獸, 5055光騎, 5065光鬼神, 5071光鬼裝, 5075光童話, 光大貴
+			const lightPriority = [5075, 5071, 5065, 5043, 5032, 5055, 5053, 5047, 5016];
 			//5018幻皇
 			switch (elementType) {
 				case 0://火
