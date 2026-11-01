@@ -5785,7 +5785,7 @@ function onGameApp() {
 		try {
 			if (!_httpClient) { debugLog("HTTP connection not initialized"); return; }
 			debugLog("execute luck gacha");
-			const luckCategoriesId = 1000080;//每期加10
+			const luckCategoriesId = 1000090;//每期加10
 			const cat1Res = await _httpClient.get({url: `${kh.env.urlRoot}/gacha_categories`}, "unblock");
 			const hasTargetCategory = cat1Res.body.tabs.some(tab => 
 				tab.banners.some(banner => banner.category_id === luckCategoriesId)
@@ -8388,6 +8388,9 @@ function onGameApp() {
 					//簡易版,使用第一支能用的幻獸
 					for (const summon of panelList) {
 						if (summon.isUsable()) {
+							//識別幻獸
+							//_battleWorld.summonList[summon.index].id
+							//招喚幻獸
 							_battleWorld.summonAttack(summon.index);
 							await sleep(300);
 							//debugLog("run summon");
@@ -8508,8 +8511,7 @@ function onGameApp() {
 			_currentStage = _battleWorld.stage._currentStage;
 			_maxStage = _battleWorld.stage._maxStage;
 			sendTurnText(`(${_currentStage}/${_maxStage}),1`);
-			//更新閒置檢查時間
-			_playerActionTime = new Date();
+			_playerActionTime = new Date();//更新閒置檢查時間
 			//由戰鬥場次的ID判斷是否為新的戰鬥
 			let currentBattleId = currentScene.getBattleId();
 			if (_battleId === currentBattleId) {
@@ -8554,6 +8556,7 @@ function onGameApp() {
 	 */
 	async function onBattleEnd() {
 		try {
+			_playerActionTime = new Date();//閒置檢查時間
 			if (_currentStage === _maxStage) {
 				//最後階段
 				_currentSceneName = "*";
@@ -8796,8 +8799,26 @@ function onGameApp() {
 			} 
 			//英靈存在時檢查可用幻獸
 			if (jobIndex > -1) {
+				//取得UI面板上的幻獸
 				const summonList = battleWorld?.battleUI?.SummonPanelGroup?.panelList || [];
+				//取得所有能用的幻獸
+				//依幻獸ID取得優先級,目前還沒想到怎麼排
+				//battleWorld.summonList[summon.index].id
+				//5012炎貴, 5021炎皇, 5024朱雀, 5028炎天獄, 5044炎天寶, 5052炎機獸, 5056炎騎, 5060炎鬼神, 5066炎鬼裝, 5076炎童話, 炎大貴
+				//5014水貴, 5020水皇, 5022青龍, 5029冰天獄, 5045水天寶 ,5048水機獸, 5054水騎, 5061水鬼神, 5068水鬼裝, 5074水童話, 水大貴
+				//5015風貴, 5017風皇, 5025玄武, 5030風天獄, 5040風天寶, 5051風機獸, 5058風騎, 5064風鬼神, 5069風鬼裝, 5077風童話, 風大貴
+				//5013雷貴, 5019雷皇, 5023白虎, 5031雷天獄, 5041雷天寶, 5050雷機獸, 5059雷騎, 5062雷鬼神, 5070雷鬼裝, 5072雷童話, 5078雷大貴
+				//5011闇貴, 5046闇皇, 5027北斗, 5033闇天獄, 5042闇天寶, 5049闇機獸, 5057闇騎, 5063闇鬼神, 5067闇鬼裝, 5073闇童話, 闇大貴
+				//5016光貴, 5047光皇, 5026南斗, 5032光天獄, 5043光天寶, 5053光機獸, 5055光騎, 5065光鬼神, 5071光鬼裝, 5075光童話, 光大貴
+				//1. 存在27貝西摩斯時,檢查隊伍有無異常狀態 needRecover();
+				//2. 存在5013雷貴時,檢查隊伍有無異常盾
+				//3. 存在5011闇貴時,檢查敵人能量珠
+				//4. 存在5027北斗時,檢查隊伍能量狀態
+				//5. 存在5022青龍時,檢查隊伍HP
+
+				//簡易版,使用第一個能用的幻獸
 				const targetSummon = summonList.find(summon => summon.isUsable());
+				//招喚幻獸
 				if (targetSummon) {
 					try {
 						//排入駐列招喚幻獸
@@ -8815,7 +8836,7 @@ function onGameApp() {
 						if (error && error.bufferedInputLength >= 2) {
 							debugLog("Summon attack execution failed.");
 						}
-						await battleReload(); //資料不同步,強制 reload
+						await battleReload();//資料不同步,強制 reload
 						_playerActionTime = Date.now();
 					}
 					return;
